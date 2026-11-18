@@ -83,6 +83,9 @@ FUNC_SUFFIX = ("에서", "에게", "으로", "부터", "까지", "하는", "되�
 PARTICLE = ("가", "는", "를", "을", "은", "이", "에", "의", "도", "로")
 MAX_TOKENS = 25
 RRF_K = 60
+# 온톨로지(관계도) 순위 가산 배율 — 2026-11-18 오프라인 측정(정답 앵커 134건): 1.0 → @1 26% · @3 61% · MRR 0.46,
+# 0 → @1 68% · @3 81% · MRR 0.75. 재생 평가로 답 품질까지 확인한 뒤 바꾼다(AI_운영체계_개선기록.md 제안 B). 맥락 줄(구조 설명)은 이 값과 무관.
+ONT_BOOST_W = 1.0
 
 
 def _nospace(s):
@@ -317,10 +320,10 @@ def search_all(query, art_ix, prec_ix, prec, arts_by_id, art_top=ART_TOP, prec_t
                 score[o] = score.get(o, 0.0) + 1.0 / (RRF_K + i)
                 best.setdefault(o, [0.0, 0.0, arts_by_id[o]["text"][:EXCERPT_CHARS]])
     boosts = ont_boosts if ont_boosts is not None else expand_ontology_safe(query).get("article_boosts")
-    if boosts:
+    if boosts and ONT_BOOST_W > 0:
         for i, (o, bw) in enumerate(sorted(boosts.items(), key=lambda x: (-x[1], x[0])), 1):
             if o in arts_by_id and bw > 0:
-                score[o] = score.get(o, 0.0) + (1.2 / (RRF_K + i)) * bw
+                score[o] = score.get(o, 0.0) + (1.2 / (RRF_K + i)) * bw * ONT_BOOST_W
                 best.setdefault(o, [0.0, 0.0, arts_by_id[o]["text"][:EXCERPT_CHARS]])
     pr = [x for x in prec_ix.search(query)[:prec_top] if x[0] >= PREC_MIN] if prec_ix and prec_ix.n else []
     for n, (s, k) in enumerate(pr):

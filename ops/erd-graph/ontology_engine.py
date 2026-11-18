@@ -81,8 +81,8 @@ def _ensure_index(ont):
         if src in nodes and dst in nodes:
             adj_out.setdefault(src, []).append(e)
             adj_in.setdefault(dst, []).append(e)
-    # 이름 정렬 우선순위: TABL > TCODE > PROG > FUNC > FUGR > CLAS > ART > DEV
-    pri = {"TABL": 0, "TCODE": 1, "PROG": 2, "FUNC": 3, "FUGR": 4, "CLAS": 5, "ART": 6, "DEV": 7}
+    # 이름 정렬 우선순위: TABL > TCODE > PROC > PROG > FUNC > FUGR > CLAS > ART > DEV
+    pri = {"TABL": 0, "TCODE": 1, "PROC": 2, "PROG": 3, "FUNC": 4, "FUGR": 5, "CLAS": 6, "ART": 7, "DEV": 8}
     for name, nids in by_name.items():
         nids.sort(key=lambda x: (pri.get(nodes[x].get("type", ""), 9), x))
     ix = {"adj_out": adj_out, "adj_in": adj_in, "by_name": by_name}
@@ -176,7 +176,7 @@ def query_entity(ont, token_or_kw, hops=2, neighbor_cap=60):
         dst_n = nodes.get(e.get("dst", ""), {})
         src_n = nodes.get(e.get("src", ""), {})
         rel_w = {
-            "TABLE_REL": 0, "RUNS_PROG": 1, "DOCUMENTED_IN": 2,
+            "TABLE_REL": 0, "RUNS_PROG": 1, "USES_TCODE": 1, "USES_TABLE": 2, "DOCUMENTED_IN": 2,
             "CALLS_FUNC": 3, "BELONGS_TO_FUGR": 4, "READS_WRITES_TABLE": 5,
             "MODIFIED_BY_DEV": 6, "CALLS_PROG": 7,
         }.get(rel, 9)
@@ -204,7 +204,7 @@ def query_entity(ont, token_or_kw, hops=2, neighbor_cap=60):
                 if taken >= per_node_cap:
                     break
 
-    by_type = {"TABL": [], "PROG": [], "FUNC": [], "FUGR": [], "TCODE": [], "ART": [], "DEV": []}
+    by_type = {"TABL": [], "PROC": [], "PROG": [], "FUNC": [], "FUGR": [], "TCODE": [], "ART": [], "DEV": []}
     for nid, dist in visited.items():
         n = nodes[nid]
         tp = n.get("type", "")

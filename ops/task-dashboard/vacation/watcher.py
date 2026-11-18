@@ -543,7 +543,10 @@ def _invoke_engine(eng, st, prompt, tag, extra_dirs=(), model=None, should_abort
                                      "cmd": CLAUDE if eng == "claude" else None,
                                      "mcp_config": os.path.join(ROOT, ".mcp.json"),
                                      "settings_obj": BOT_SETTINGS, "extra_dirs": extra_dirs,
-                                     "model": (model or st.cfg.get("gemini_model")) if eng == "gemini" else None})
+                                     # 2026-11-18 담당자 결정: Claude 모델 고정(config.json claude_model) — CLI 「권장」이 11-17 소넷→오퍼스로 바뀌어
+                                     # 주간 한도 소진 위험이 커졌다. 비우면 예전처럼 「권장」을 따른다.
+                                     "model": (model or st.cfg.get("gemini_model")) if eng == "gemini"
+                                              else (model or st.cfg.get("claude_model") or None)})
     cmd, env = inv["argv"], inv["env"]
     for note in inv.get("notes") or ():
         log("  ⚠ %s" % note)

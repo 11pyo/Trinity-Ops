@@ -31,6 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ARCHIVE_ROOT = os.path.dirname(HERE)
 RAW_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "erd-extract-data", "sap_dev120", "raw")
 OVERRIDE_PATH = os.path.join(HERE, "manual_overrides.json")
+PROCESS_CATALOG_PATH = os.path.join(HERE, "process_catalog.json")
 OUT_JSON = os.path.join(HERE, "schema_ontology.json")
 OUT_MD = os.path.join(HERE, "ERD_CATALOG.md")
 OUT_HTML = os.path.join(HERE, "erd-viewer.html")
@@ -538,6 +539,41 @@ def build_ontology() -> dict:
         if oe.get("src") in nodes and oe.get("dst") in nodes:
             add_edge(oe["src"], oe["rel"], oe["dst"], join=oe.get("join", ""), label=oe.get("label", ""), source="manual_override", curated=True)
 
+    # 9) 업무 프로세스 카탈로그(process_catalog.json) 병합 — 최신본 우선 원칙
+    proc_cat = _load_json(PROCESS_CATALOG_PATH, {"processes": []})
+    for pinfo in proc_cat.get("processes", []):
+        pid = (pinfo.get("id") or "").upper()
+        if not pid:
+            continue
+        pname = pinfo.get("name") or pid
+        pdesc = f"{pname} | {pinfo.get('steps', '')} [기준: {pinfo.get('priority_source', '')}]"
+        pnid = ensure_node(
+            "PROC",
+            pid,
+            desc=pdesc,
+            domain=pinfo.get("domain", "OTHER_ZSD"),
+            core=True,
+            extra={
+                "title": pname,
+                "steps": pinfo.get("steps", ""),
+                "priority_source": pinfo.get("priority_source", ""),
+                "manual_files": pinfo.get("manual_files", []),
+                "superseded_manuals": pinfo.get("superseded_manuals", []),
+            },
+        )
+        for tc in pinfo.get("tcodes", []):
+            tc_u = tc.upper()
+            tc_nid = ensure_node("TCODE", tc_u, core=True)
+            add_edge(pnid, "USES_TCODE", tc_nid, label=pname[:28], source="process_catalog", curated=True)
+        for tn in pinfo.get("tables", []):
+            tn_u = tn.upper()
+            tn_nid = ensure_node("TABL", tn_u, core=True)
+            add_edge(pnid, "USES_TABLE", tn_nid, label=pname[:28], source="process_catalog", curated=True)
+        for aid in pinfo.get("articles", []):
+            art_nid = f"ART:{aid}"
+            if art_nid in nodes:
+                add_edge(pnid, "DOCUMENTED_IN", art_nid, label="최신 정본 문서", source="process_catalog", curated=True)
+
     # 정렬 및 sync_hash 계산
     sorted_nodes = {k: nodes[k] for k in sorted(nodes)}
     sorted_edges = sorted(edges_map.values(), key=lambda e: (e["src"], e["rel"], e["dst"]))
@@ -548,6 +584,7 @@ def build_ontology() -> dict:
         "functions": sum(1 for n in sorted_nodes.values() if n["type"] == "FUNC"),
         "fugrs": sum(1 for n in sorted_nodes.values() if n["type"] == "FUGR"),
         "tcodes": sum(1 for n in sorted_nodes.values() if n["type"] == "TCODE"),
+        "processes": sum(1 for n in sorted_nodes.values() if n["type"] == "PROC"),
         "articles": sum(1 for n in sorted_nodes.values() if n["type"] == "ART"),
         "dev_cards": sum(1 for n in sorted_nodes.values() if n["type"] == "DEV"),
         "edges": len(sorted_edges),
@@ -590,6 +627,7 @@ def render_catalog_md(ont: dict) -> str:
         f"| T-Code (`TRAN`) | **{c['tcodes']:,}** | TSTC/TSTCT + 핵심 표준 T-Code |",
         f"| 함수 / 함수그룹 (`FUNC`/`FUGR`) | **{c['functions']} / {c['fugrs']}** | TFDIR/ENLFDIR + CROSS 호출 |",
         f"| 아카이브 문서 / DEV 카드 | **{c['articles']} / {c['dev_cards']}** | `DOCUMENTED_IN` / `MODIFIED_BY_DEV` |",
+        f"| 업무 프로세스 (`PROC`) | **{c.get('processes', 0)}** | 최신본 우선 + `SD 매뉴얼` 통합 (`USES_TCODE`/`USES_TABLE`) |",
         f"| 온톨로지 관계 (`edges`) | **{c['edges']:,}** | 테이블 ERD 관계 `TABLE_REL` **{c['table_rels']}**건 |",
         "",
         "---",
@@ -701,6 +739,29 @@ def render_catalog_md(ont: dict) -> str:
         tdesc = (tn.get("desc") or "").replace("|", "/")[:40]
         lines.append(f"| `{tn['name']}` | {tdesc} | {', '.join(progs[:2]) or '-'} | {', '.join(tabs) or '-'} |")
     lines.append("")
+
+    # 섹션 5: 업무 프로세스 온톨로지 카탈로그
+    proc_nodes = sorted([n for n in nodes.values() if n["type"] == "PROC"],
+                        key=lambda x: (DOMAINS.get(x.get("domain", ""), {}).get("order", 99), x["name"]))
+    if proc_nodes:
+        lines.extend([
+            "---",
+            "",
+            "## 5. 업무 프로세스 온톨로지 카탈로그 (최신본 우선 · SD 매뉴얼 매핑)",
+            "",
+            "| 도메인 | 프로세스 ID | 프로세스명 & 흐름 | 최신 기준 출처 | 매핑된 SD 매뉴얼 |",
+            "|---|---|---|---|---|",
+        ])
+        for pn in proc_nodes:
+            dlabel = DOMAINS.get(pn.get("domain", ""), {}).get("label", pn.get("domain", ""))
+            ptitle = (pn.get("title") or pn["name"]).replace("|", "/")
+            psteps = (pn.get("steps") or "").replace("|", "/")
+            psrc = (pn.get("priority_source") or "").replace("|", "/")
+            mfiles = ", ".join(os.path.basename(m) for m in (pn.get("manual_files") or [])) or "-"
+            mfiles = mfiles.replace("|", "/")
+            lines.append(f"| {dlabel} | `{pn['name']}` | **{ptitle}** — {psteps} | {psrc} | {mfiles} |")
+        lines.append("")
+
     return "\n".join(lines)
 
 

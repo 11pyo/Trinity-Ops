@@ -67,7 +67,7 @@ html,body{{margin:0;height:100%;background:var(--bg);color:var(--txt);font-famil
 .n-row:hover,.n-row.on{{border-color:var(--accent);background:var(--field-on)}}
 .n-top{{display:flex;justify-content:space-between;align-items:center;font-weight:700}}
 .tag{{font-size:10px;padding:1px 5px;border-radius:4px;background:var(--tagbg);color:var(--accent)}}
-.tag.PROG{{color:var(--ok)}} .tag.TCODE{{color:var(--warn)}} .tag.FUNC,.tag.FUGR{{color:var(--purple)}} .tag.ART{{color:var(--pink)}} .tag.DEV{{color:var(--rose)}}
+.tag.PROG{{color:var(--ok)}} .tag.TCODE{{color:var(--warn)}} .tag.PROC{{color:var(--accent)}} .tag.FUNC,.tag.FUGR{{color:var(--purple)}} .tag.ART{{color:var(--pink)}} .tag.DEV{{color:var(--rose)}}
 .n-sub{{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 .stage{{position:relative;overflow:hidden;background:radial-gradient(circle at 20% 20%,var(--stage1),var(--stage2))}}
 .stage-bar{{position:absolute;top:10px;left:10px;right:10px;z-index:5;display:flex;justify-content:space-between;pointer-events:none}}
@@ -211,7 +211,7 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
 
   function updateStats(){{
     var c = (ONT.meta && ONT.meta.counts) || {{}};
-    $("stats").textContent = "테이블 " + (c.tables || 0) + " · 프로그램 " + (c.programs || 0) + " · T-Code " + (c.tcodes || 0) + " · 함수 " + (c.functions || 0) + " · 관계 " + (c.edges || 0);
+    $("stats").textContent = "테이블 " + (c.tables || 0) + " · 프로세스 " + (c.processes || 0) + " · 프로그램 " + (c.programs || 0) + " · T-Code " + (c.tcodes || 0) + " · 함수 " + (c.functions || 0) + " · 관계 " + (c.edges || 0);
   }}
 
   function renderDomains(){{
@@ -233,7 +233,7 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
   }}
 
   function renderChips(){{
-    var types = [["ALL","전체"],["TABL","테이블"],["TCODE","T-Code"],["PROG","프로그램"],["FUNC","함수"],["ART","문서"],["DEV","DEV"]];
+    var types = [["ALL","전체"],["PROC","프로세스"],["TABL","테이블"],["TCODE","T-Code"],["PROG","프로그램"],["FUNC","함수"],["ART","문서"],["DEV","DEV"]];
     var box = $("type-chips"); box.textContent = "";
     types.forEach(function(t){{
       var sp = document.createElement("span");

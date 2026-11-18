@@ -34,6 +34,7 @@ def format_text(res: dict) -> str:
 
     bt = res.get("by_type") or {}
     for label, key in (
+        ("연관 프로세스", "PROC"),
         ("연관 테이블 (ERD)", "TABL"),
         ("실행 T-Code", "TCODE"),
         ("연관 프로그램", "PROG"),
