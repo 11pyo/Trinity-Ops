@@ -26,6 +26,12 @@ def format_text(res: dict) -> str:
     lines = [
         f"=== [{p['type']}] {p['name']} — {p.get('desc') or '설명 없음'} (도메인: {p.get('domain', '-')}) ===",
     ]
+    if p["type"] == "PROC" and p.get("flow"):
+        lines.append("  단계별 업무 흐름:")
+        for st in p["flow"]:
+            tcs = ", ".join(st.get("tcodes") or []) or "-"
+            tbs = ", ".join(st.get("tables") or []) or "-"
+            lines.append(f"    {st.get('step')}. [{st.get('role','')}] {st.get('label','')} (T-Code: {tcs} | 테이블: {tbs})")
     if p["type"] == "TABL" and p.get("fields"):
         pks = [f["field"] for f in p["fields"] if f.get("pk")]
         lines.append("  PK 필드: " + (", ".join(pks) if pks else "-"))

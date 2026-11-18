@@ -388,9 +388,109 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
     $("canvas-hint").textContent = (DOMAINS[state.domain] ? DOMAINS[state.domain].label : state.domain) + " · 테이블 " + tabs.length + "개 표시";
   }}
 
+  function renderProcessFlowSvg(svg, proc){{
+    var flow = proc.flow || [];
+    var cols = flow.length > 4 ? 4 : Math.max(1, flow.length);
+    var colW = 240, gapX = 48, rowGap = 250;
+    var startX = 70, startY = 86;
+    var rows = Math.ceil(flow.length / cols);
+    var totalW = Math.max(1160, startX * 2 + cols * colW + (cols - 1) * gapX);
+    var totalH = Math.max(700, startY + rows * rowGap + 130);
+    state.vx = 0; state.vy = 0; state.vw = totalW; state.vh = totalH;
+
+    var eLayer = svgEl("g"), nLayer = svgEl("g");
+    svg.appendChild(eLayer); svg.appendChild(nLayer);
+
+    // 상단 프로세스 배너
+    var titleTxt = "[PROC] " + (proc.title || proc.name) + (proc.priority_source ? "  ·  기준: " + proc.priority_source : "");
+    nLayer.appendChild(svgEl("text", {{x:startX, y:40, class:"erd-title", fill:"#22d3ee", "font-size":"15px"}}, titleTxt));
+    nLayer.appendChild(svgEl("text", {{x:startX, y:60, class:"erd-desc"}}, "단계별 순방향 업무 흐름 (각 T-Code · 테이블 카드를 클릭하면 해당 온톨로지로 이동합니다)"));
+
+    var stepPos = [];
+    flow.forEach(function(st, idx){{
+      var r = Math.floor(idx / cols), c = idx % cols;
+      var x = startX + c * (colW + gapX);
+      var y = startY + r * rowGap;
+      stepPos.push({{x:x, y:y, w:colW, h:60, st:st}});
+    }});
+
+    // 단계 간 화살표 연결 (1 → 2 → 3 ...)
+    for(var i = 0; i < stepPos.length - 1; i++){{
+      var a = stepPos[i], b = stepPos[i + 1];
+      if(Math.floor(i / cols) === Math.floor((i + 1) / cols)){{
+        eLayer.appendChild(svgEl("line", {{
+          x1: a.x + a.w, y1: a.y + a.h/2,
+          x2: b.x - 4, y2: b.y + b.h/2,
+          stroke: "#22d3ee", "stroke-width": 2.4, "marker-end": "url(#arr)"
+        }}));
+      }}else{{
+        // 줄바꿈 연결 (이전 줄 끝 → 다음 줄 시작)
+        var midY = a.y + a.h + 150;
+        var pathD = "M " + (a.x + a.w/2) + " " + (a.y + a.h)
+                  + " L " + (a.x + a.w/2) + " " + midY
+                  + " L " + (b.x + b.w/2) + " " + midY
+                  + " L " + (b.x + b.w/2) + " " + (b.y - 4);
+        eLayer.appendChild(svgEl("path", {{
+          d: pathD, fill:"none", stroke:"#22d3ee", "stroke-width":2, "stroke-dasharray":"5,4", "marker-end":"url(#arr)"
+        }}));
+      }}
+    }}
+
+    // 각 단계 카드 및 하위 T-Code / 테이블 칩 그리기
+    stepPos.forEach(function(sp){{
+      var st = sp.st;
+      var g = svgEl("g", {{transform:"translate(" + sp.x + "," + sp.y + ")"}});
+      g.appendChild(svgEl("rect", {{width:sp.w, height:sp.h, rx:10, fill:"#0f1e36", stroke:"#22d3ee", "stroke-width":2}}));
+      g.appendChild(svgEl("rect", {{width:sp.w, height:24, rx:10, fill:"#164e63"}}));
+      g.appendChild(svgEl("text", {{x:10, y:16, class:"erd-title", fill:"#67e8f9"}}, "STEP " + st.step + (st.role ? " · " + st.role : "")));
+      g.appendChild(svgEl("text", {{x:10, y:44, class:"erd-title", fill:"#f1f5f9"}}, (st.label || "").slice(0, 22)));
+      nLayer.appendChild(g);
+
+      var subItems = [];
+      (st.tcodes || []).forEach(function(tc){{ subItems.push({{id:"TCODE:" + tc, label:tc, type:"TCODE", col:"#fbbf24"}}); }});
+      (st.tables || []).forEach(function(tb){{ subItems.push({{id:"TABL:" + tb, label:tb, type:"TABL", col:"#38bdf8"}}); }});
+
+      var chipY = sp.y + sp.h + 14;
+      subItems.slice(0, 5).forEach(function(it){{
+        var nd = NODES[it.id];
+        var desc = nd && nd.desc ? nd.desc.slice(0, 18) : it.type;
+        eLayer.appendChild(svgEl("line", {{x1:sp.x + 20, y1:sp.y + sp.h, x2:sp.x + 20, y2:chipY + 15, stroke:"#334155", "stroke-width":1.2, "stroke-dasharray":"3,3"}}));
+        var cg = svgEl("g", {{class:"erd-card", transform:"translate(" + (sp.x + 12) + "," + chipY + ")"}});
+        cg.appendChild(svgEl("rect", {{width:sp.w - 16, height:28, rx:6, fill:"#111a2e", stroke:it.col, "stroke-width":1.3}}));
+        cg.appendChild(svgEl("text", {{x:8, y:18, class:"erd-fld", fill:it.col, "font-weight":"700"}}, "[" + (it.type==="TCODE"?"T":"TBL") + "] " + it.label));
+        cg.appendChild(svgEl("text", {{x:115, y:18, class:"erd-fld"}}, desc.slice(0, 14)));
+        if(nd){{ cg.onclick = function(){{ selectNode(nd.id, true); }}; }}
+        nLayer.appendChild(cg);
+        chipY += 32;
+      }});
+    }});
+
+    // 하단 관련 아카이브 문서(ART) 칩
+    var artEdges = (ADJ[proc.id] || []).filter(function(e){{ return e.rel === "DOCUMENTED_IN" && NODES[e.dst]; }});
+    if(artEdges.length){{
+      var ay = startY + rows * rowGap + 24;
+      nLayer.appendChild(svgEl("text", {{x:startX, y:ay, class:"erd-desc", fill:"#f472b6"}}, "📚 연결된 아카이브 정본 문서:"));
+      var ax = startX;
+      artEdges.slice(0, 5).forEach(function(e){{
+        var an = NODES[e.dst];
+        var ag = svgEl("g", {{class:"erd-card", transform:"translate(" + ax + "," + (ay + 10) + ")"}});
+        ag.appendChild(svgEl("rect", {{width:210, height:32, rx:7, fill:"#1f122b", stroke:"#f472b6", "stroke-width":1.3}}));
+        ag.appendChild(svgEl("text", {{x:10, y:20, class:"erd-fld", fill:"#f472b6"}}, "[문서] " + an.name.slice(0, 24)));
+        ag.onclick = function(){{ selectNode(an.id, true); }};
+        nLayer.appendChild(ag);
+        ax += 222;
+      }});
+    }}
+    $("canvas-hint").textContent = "프로세스 흐름: " + (proc.title || proc.name) + " · 총 " + flow.length + "단계 (좌→우 순서)";
+  }}
+
   function renderOntologySvg(svg){{
     var centerId = state.selected || ALL_IDS[0];
     if(!centerId || !NODES[centerId]) return;
+    var centerNode = NODES[centerId];
+    if(centerNode.type === "PROC" && centerNode.flow && centerNode.flow.length){{
+      return renderProcessFlowSvg(svg, centerNode);
+    }}
     var inc = ADJ[centerId] || [];
     var ring1 = [], seen = {{}}; seen[centerId] = 1;
     inc.forEach(function(e){{
@@ -398,18 +498,20 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
       if(!seen[o] && NODES[o]){{ seen[o] = 1; ring1.push({{node:NODES[o], edge:e}}); }}
     }});
     ring1 = ring1.slice(0, 26);
-    var cx = 600, cy = 380, r = Math.min(280, 140 + ring1.length * 7);
+    var cx = 600, cy = 380;
+    var rx = Math.min(460, Math.max(250, 140 + ring1.length * 13));
+    var ry = Math.min(300, Math.max(190, 120 + ring1.length * 8));
     state.vx = 0; state.vy = 0; state.vw = 1200; state.vh = 760;
 
     var pos = {{}}; pos[centerId] = {{x:cx, y:cy}};
     ring1.forEach(function(it, i){{
       var ang = (2 * Math.PI * i) / Math.max(1, ring1.length) - Math.PI / 2;
-      pos[it.node.id] = {{x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang)}};
+      pos[it.node.id] = {{x: cx + rx * Math.cos(ang), y: cy + ry * Math.sin(ang)}};
     }});
 
     var eLayer = svgEl("g"), nLayer = svgEl("g");
     svg.appendChild(eLayer); svg.appendChild(nLayer);
-    var colorMap = {{TABL:"#38bdf8", PROG:"#34d399", TCODE:"#fbbf24", FUNC:"#a78bfa", FUGR:"#a78bfa", ART:"#f472b6", DEV:"#fb7185", CLAS:"#60a5fa"}};
+    var colorMap = {{TABL:"#38bdf8", PROC:"#22d3ee", PROG:"#34d399", TCODE:"#fbbf24", FUNC:"#a78bfa", FUGR:"#a78bfa", ART:"#f472b6", DEV:"#fb7185", CLAS:"#60a5fa"}};
 
     ring1.forEach(function(it){{
       var p2 = pos[it.node.id];
@@ -438,8 +540,25 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
     if(!n){{ box.innerHTML = '<div class="empty">선택된 노드가 없습니다.</div>'; return; }}
     var html = '<span class="tag ' + esc(n.type) + '">' + esc(n.type) + '</span>'
              + (n.domain ? ' <span class="badge">' + esc(n.domain) + '</span>' : '')
-             + '<h2>' + esc(n.name) + '</h2>'
+             + '<h2>' + esc(n.title || n.name) + '</h2>'
              + '<div class="desc">' + esc(n.desc || "설명 없음") + '</div>';
+
+    if(n.type === "PROC" && n.flow && n.flow.length){{
+      html += '<div class="sec-t">🔄 단계별 업무 흐름 (' + n.flow.length + '단계)</div>';
+      n.flow.forEach(function(st){{
+        var chips = [];
+        (st.tcodes || []).forEach(function(tc){{ chips.push('<span class="badge" style="cursor:pointer;color:#fbbf24" data-nid="TCODE:' + esc(tc) + '">' + esc(tc) + '</span>'); }});
+        (st.tables || []).forEach(function(tb){{ chips.push('<span class="badge" style="cursor:pointer;color:#38bdf8" data-nid="TABL:' + esc(tb) + '">' + esc(tb) + '</span>'); }});
+        html += '<div class="rel-card" style="cursor:default">'
+              + '<strong>' + esc(st.step) + '. ' + esc(st.label) + (st.role ? ' <span class="badge">' + esc(st.role) + '</span>' : '') + '</strong>'
+              + '<div class="n-sub" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">' + (chips.join('') || '-') + '</div>'
+              + '</div>';
+      }});
+      if(n.manual_files && n.manual_files.length){{
+        html += '<div class="sec-t">📁 매핑된 SD 매뉴얼 (' + n.manual_files.length + ')</div>'
+              + '<div class="desc">' + n.manual_files.map(esc).join('<br>') + '</div>';
+      }}
+    }}
 
     var inc = ADJ[n.id] || [];
     var groups = {{}};
@@ -471,7 +590,7 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");}});}}
       html += '</tbody></table>';
     }}
     box.innerHTML = html;
-    box.querySelectorAll(".rel-card").forEach(function(el){{
+    box.querySelectorAll("[data-nid]").forEach(function(el){{
       el.onclick = function(){{ selectNode(el.getAttribute("data-nid"), state.view === "ont"); }};
     }});
   }}

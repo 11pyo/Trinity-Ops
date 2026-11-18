@@ -52,7 +52,9 @@ PREC_MIN = 30.0
 # 선례가 가리킨 아카이브 앵커를 후보 순위에 가산하는 가중. 0 = 끔 — 오프라인 측정(정답 앵커 재현율, 문의 104건)에서 가산이 오히려
 # @1 74%→55% 로 순위를 흩뜨렸다(선례의 앵커는 그 선례의 주제일 뿐 이 질문의 주제가 아니다). 선례는 후보로 따로 보여 준다.
 PREC_ANCHOR_W = 0.0
-EXCERPT_CHARS = 650
+EXCERPT_CHARS = 1400              # 2026-11-18: 650 → 1400 · 1~3위 모두 발췌(아르곤 검토 · 650자·1·2위만으로는 조치가 잘렸다)
+EXCERPT_TOP = 3
+ONT_LITERAL_ONLY = True          # 온톨로지는 질문에 오브젝트 이름이 글자 그대로 있을 때만(ask.py 와 같은 규칙 — 2026-11-18 일원화)
 CODE_W = 3.0                    # 영숫자 코드(ZXX_R0700·VF04 등)는 희귀하고 강한 신호
 HEAD_W = 1.6                    # 제목·태그 창 가중
 REF_BONUS = 0.35                # 선례가 가리킨 아티클 가산(상위 선례 점수에 비례)
@@ -85,7 +87,7 @@ MAX_TOKENS = 25
 RRF_K = 60
 # 온톨로지(관계도) 순위 가산 배율 — 2026-11-18 오프라인 측정(정답 앵커 134건): 1.0 → @1 26% · @3 61% · MRR 0.46,
 # 0 → @1 68% · @3 81% · MRR 0.75. 재생 평가로 답 품질까지 확인한 뒤 바꾼다(AI_운영체계_개선기록.md 제안 B). 맥락 줄(구조 설명)은 이 값과 무관.
-ONT_BOOST_W = 1.0
+ONT_BOOST_W = 0.0     # 2026-11-18 결정 — 순위 가산 끔(사전 버킷 @3 47.5→72.5%). 온톨로지는 맥락 줄로만
 
 
 def _nospace(s):
@@ -352,6 +354,27 @@ def _q_text(r):
     return re.sub(r"\[\[사진:\d+\]\]", " ", r.get("q") or "")
 
 
+def prepare_query(query):
+    """검색 질의 준비 — 트리니티봇(section)과 ask.py 가 **같은 규칙**으로 검색하게 하는 단일 진입점(2026-11-18).
+    ① 이웃 낱말 붙여 보기(아티클 키워드는 「세금계산서재발행」처럼 붙여 적힌 것이 많다)
+    ② 온톨로지는 질문에 오브젝트 이름이 글자 그대로 있을 때만 — 흔한 낱말(발행·권한…)로 허브 테이블이 붙어 순위를 흩뜨리지 않게."""
+    words = query.split()
+    search_q = query + " " + " ".join(a + b for a, b in zip(words, words[1:])) if len(words) > 1 else query
+    ont = expand_ontology_safe(query)
+    if ONT_LITERAL_ONLY:
+        q_up = query.upper()
+        if not [n for n in (ont.get("matched_nodes") or []) if n.upper() in q_up]:
+            ont = {"matched_nodes": [], "article_boosts": {}, "expanded_terms": [], "context_lines": []}
+    return search_q, ont
+
+
+def excerpt_of(article_text, window_text, limit=EXCERPT_CHARS):
+    """가장 잘 맞은 창의 시작 줄부터 아티클 본문을 limit 자까지 — 창(700자)보다 넓게 조치까지 담는다."""
+    head = (window_text or "").split("\n", 1)[0].strip()
+    pos = article_text.find(head) if head else -1
+    return article_text[pos:pos + limit] if pos >= 0 else (window_text or article_text)[:limit]
+
+
 def section(batch, merged, archive_html, cfg=None):
     """프롬프트에 넣을 「자동 선행 검색 결과」 절. 문의마다 아카이브 후보 3 · 선례 후보 3. 실패하면 빈 문자열."""
     try:
@@ -369,7 +392,7 @@ def section(batch, merged, archive_html, cfg=None):
         prec = human_precedents(merged, exclude=set(batch), test_reqs=((cfg or {}).get("test_reqs") or []))
         prec_ix = build_prec_index(prec)
         lines = ["## 자동 선행 검색 결과 (문의마다 · 코드가 먼저 찾은 것)",
-                 "아래는 문의 글로 **기계적으로** 찾은 후보입니다. 틀릴 수 있으니 참고용으로만 쓰십시오 — 맞아 보이면 그 아티클의 해당 절 **전체**를 읽어 확인하고 답하고, "
+                 "아래는 문의 글로 **기계적으로** 찾은 후보입니다. 발췌에 문의와 **같은 증상·화면·조치**가 있으면 그 발췌를 근거로 1차 안내하십시오(추가로 파일을 읽지 않아도 됩니다). 문의의 전제(상태·조건)가 다르면 쓰지 말고, 애매하면 「~이면 A, ~이면 B」로 가르십시오. "
                  "후보가 문의와 어긋나면 무시하고 직접 검색하십시오. 후보가 맞는데 「아카이브에 없다」고 답하면 안 됩니다.",
                  "선례는 **사람이 답해 끝낸 건**만 보여 줍니다. 선례 번호·요청자는 public 에 쓰지 마십시오.", ""]
         for iid in batch:
@@ -377,15 +400,15 @@ def section(batch, merged, archive_html, cfg=None):
             q = _q_text(r)
             if len(q.strip()) < 6:
                 continue
-            ont_exp = expand_ontology_safe(q)
-            ar, pr = search_all(q, art_ix, prec_ix, prec, by_id, curated=curated, ont_boosts=ont_exp.get("article_boosts"))
+            sq, ont_exp = prepare_query(q)
+            ar, pr = search_all(sq, art_ix, prec_ix, prec, by_id, curated=curated, ont_boosts=ont_exp.get("article_boosts"))
             lines.append("### %s" % iid)
             if ar:
                 lines.append("아카이브 후보:")
                 for n, (aid, s, text) in enumerate(ar, 1):
                     lines.append("%d. #%s — %s" % (n, aid, _clip(by_id[aid]["title"], 80)))
-                    if n <= 2:
-                        lines.append("   발췌: " + _clip(text, EXCERPT_CHARS))
+                    if n <= EXCERPT_TOP:
+                        lines.append("   발췌: " + _clip(excerpt_of(by_id[aid]["text"], text), EXCERPT_CHARS))
             else:
                 lines.append("아카이브 후보: (없음)")
             if ont_exp.get("context_lines"):

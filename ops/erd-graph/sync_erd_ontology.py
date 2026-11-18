@@ -546,6 +546,7 @@ def build_ontology() -> dict:
         if not pid:
             continue
         pname = pinfo.get("name") or pid
+        flow_list = pinfo.get("flow") or []
         pdesc = f"{pname} | {pinfo.get('steps', '')} [기준: {pinfo.get('priority_source', '')}]"
         pnid = ensure_node(
             "PROC",
@@ -556,19 +557,28 @@ def build_ontology() -> dict:
             extra={
                 "title": pname,
                 "steps": pinfo.get("steps", ""),
+                "flow": flow_list,
                 "priority_source": pinfo.get("priority_source", ""),
                 "manual_files": pinfo.get("manual_files", []),
                 "superseded_manuals": pinfo.get("superseded_manuals", []),
             },
         )
+        tc_step = {}
+        tb_step = {}
+        for st in flow_list:
+            s_lbl = f"{st.get('step')}단계 {st.get('label', '')}".strip()
+            for tc in st.get("tcodes", []):
+                tc_step.setdefault(tc.upper(), s_lbl)
+            for tn in st.get("tables", []):
+                tb_step.setdefault(tn.upper(), s_lbl)
         for tc in pinfo.get("tcodes", []):
             tc_u = tc.upper()
             tc_nid = ensure_node("TCODE", tc_u, core=True)
-            add_edge(pnid, "USES_TCODE", tc_nid, label=pname[:28], source="process_catalog", curated=True)
+            add_edge(pnid, "USES_TCODE", tc_nid, label=tc_step.get(tc_u, pname[:28]), source="process_catalog", curated=True)
         for tn in pinfo.get("tables", []):
             tn_u = tn.upper()
             tn_nid = ensure_node("TABL", tn_u, core=True)
-            add_edge(pnid, "USES_TABLE", tn_nid, label=pname[:28], source="process_catalog", curated=True)
+            add_edge(pnid, "USES_TABLE", tn_nid, label=tb_step.get(tn_u, pname[:28]), source="process_catalog", curated=True)
         for aid in pinfo.get("articles", []):
             art_nid = f"ART:{aid}"
             if art_nid in nodes:

@@ -640,7 +640,7 @@ def _invoke_engine(eng, st, prompt, tag, extra_dirs=(), model=None, should_abort
     return d, None
 
 
-def call_claude(st, prompt, tag, extra_dirs=()):
+def call_claude(st, prompt, tag, extra_dirs=(), model=None):
     """stdout 을 파이프가 아니라 파일로 받는다 — 손자 프로세스가 파이프를 물고 있으면 교착한다."""
     rt = st.dir
     os.makedirs(os.path.join(rt, "runs"), exist_ok=True)
@@ -648,7 +648,7 @@ def call_claude(st, prompt, tag, extra_dirs=()):
     io.open(promptp, "w", encoding="utf-8", newline="").write(prompt)
 
     eng = ENG.resolve(st.cfg)
-    d, err = _invoke_engine(eng, st, prompt, tag, extra_dirs)
+    d, err = _invoke_engine(eng, st, prompt, tag, extra_dirs, model=model if eng == "claude" else None)
     if err == _SUPERSEDED:
         return None, _SUPERSEDED
 
@@ -1065,7 +1065,12 @@ def second_pass(st, ix, merged, batch, answers, tag):
         st.bump_run()
         st.flush()
         log("2차 시도 — 보류·에스컬레이션 %d건에 선행 검색 결과를 넣어 다시 호출 (%s)" % (len(ids2), ", ".join(ids2)))
-        d2, err2 = call_claude(st, prompt2, tag + "b", [getattr(ix, "SHOT_DIR", "")])
+        # 계단식(2026-11-18 · 개선기록 5절): 2차만 다른 모델(config second_pass_claude_model, 비우면 1차와 같은 모델)
+        m2 = (st.cfg.get("second_pass_claude_model") or "").strip() or None
+        if m2:
+            log("  2차 모델: %s" % m2)
+        d2, err2 = (call_claude(st, prompt2, tag + "b", [getattr(ix, "SHOT_DIR", "")], model=m2) if m2
+                     else call_claude(st, prompt2, tag + "b", [getattr(ix, "SHOT_DIR", "")]))
         if err2 == _SUPERSEDED:
             if st.state.get("runs_count", 0) > 0:
                 st.state["runs_count"] = max(0, st.state.get("runs_count", 1) - 1)
