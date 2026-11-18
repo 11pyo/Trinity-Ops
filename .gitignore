@@ -1,0 +1,23 @@
+# 실행 중 생기는 것 — 데모 사본 · 프로파일 · 첨부 · 봇 런타임
+.runtime/
+.runtime-*.log
+__pycache__/
+*.pyc
+
+# 생성물 (빌드하면 다시 생긴다)
+ops/archive.html
+ops/archive-structure.md
+ops/erd-graph/erd-viewer.html
+ops/erd-graph/ERD_CATALOG.md
+ops/task-dashboard/chat-ui/_test/
+
+# 실데이터 · 자격증명 — 절대 커밋하지 않는다
+ops/task-dashboard/inquiry-log.js
+ops/task-dashboard/inquiry-log.js.*
+ops/task-dashboard/_saver_token.js
+ops/task-dashboard/_backups/
+ops/task-dashboard/*.prev
+*.bak_*
+*.lock
+.leakterms
+.env

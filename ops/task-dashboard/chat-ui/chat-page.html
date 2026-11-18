@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SD 문의 접수</title>
+<!--
+  SD 문의 접수 — 대화창 화면 (시험본). 정본 화면은 intake-server.py 의 PAGE 다.
+  · 서버 API 는 운영본 그대로 쓴다: /api/new · /api/mine · /api/followup · /api/close · /api/pulse · /api/shot
+  · 글·사진 입력칸(붙여넣기 · 끌어놓기 · 크기 줄이기 · [[사진:N]] 직렬화)은 운영 화면의 스크립트를
+    build_test.py 가 **그대로 뽑아** 아래 첫 스크립트 자리에 넣는다 — 여기서 다시 짜지 않는다.
+  · 서버가 준 값은 전부 textContent 로만 넣는다(innerHTML 로 데이터를 넣지 않는다).
+-->
+<style>
+:root{
+  --bg:#e8edf2; --panel:#f4f6f9; --card:#fff; --ink:#18212c; --sub:#5d6978; --line:#d9dfe6;
+  --pt:#1a6fb5; --pt-ink:#fff; --bot:#fff; --human:#eef8f1; --human-line:#2e8b57;
+  --warn-bg:#fff4dc; --warn-ink:#7a5200; --chip:#eef1f5; --ok:#1f7a33; --bad:#b3261e;
+  --shadow:0 1px 2px rgba(20,30,45,.08);
+  --fold-bd:#b8c4d4; --fold-hover:#f8fbff; --fold-sh:0 2px 5px rgba(20,30,45,.08); --fold-sh-h:0 3px 8px rgba(26,111,181,.14);
+  --head-open:#dfe7f1; --head-open-bd:#c2cedc;
+  --close-bd:#9bc7a3; --close-bg:rgba(47,143,70,.07); --close-go:#1f7a33; --close-go-ink:#fff;
+  --st-new-bg:#e8f0fb; --st-new:#1a5fa8; --st-prog-bg:#fdf2df; --st-prog:#8a5a00; --st-wait-bg:#e4e7eb; --st-wait:#4a5563;
+  --st-done-bg:#e8f6ea; --st-done:#1f7a33; --st-ai-bg:#e3f4ef; --st-ai:#11795e;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f141a; --panel:#151b23; --card:#1c242e; --ink:#e7ecf2; --sub:#9aa7b6; --line:#2b3542;
+  --pt:#5b9fe0; --pt-ink:#0b1220; --bot:#1c242e; --human:#17291f; --human-line:#4fb37c;
+  --warn-bg:#3a2e12; --warn-ink:#f3d58a; --chip:#232d39; --ok:#6fd19c; --bad:#ff8a80; --shadow:none;
+  --fold-bd:#384658; --fold-hover:#222d3a; --fold-sh:none; --fold-sh-h:none;
+  --head-open:#243040; --head-open-bd:#384658;
+  --close-bd:#3d6b4a; --close-bg:rgba(79,179,124,.08); --close-go:#4fb37c; --close-go-ink:#0b1a12;
+  --st-new-bg:#1d3350; --st-new:#9cc6f2; --st-prog-bg:#3a2e12; --st-prog:#f3d58a; --st-wait-bg:#2b3542; --st-wait:#c3ccd6;
+  --st-done-bg:#17291f; --st-done:#6fd19c; --st-ai-bg:#14302a; --st-ai:#7fdcc0;
+}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.6 "Malgun Gothic","맑은 고딕",system-ui,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,.ed:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--pt);outline-offset:2px}
+[hidden]{display:none!important}
+.face{width:38px;height:38px;border-radius:13px;background:var(--pt);color:var(--pt-ink);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex:none}
+
+/* 들어가기 */
+#gate{min-height:100%;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.door{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px 22px;box-shadow:var(--shadow)}
+.door h1{margin:10px 0 4px;font-size:20px}
+.door p{margin:0 0 6px;color:var(--sub);font-size:13px}
+.door label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}
+.door input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:inherit}
+.door .hint{color:var(--sub);font-size:12px;margin-top:5px}
+.door .go{width:100%;margin-top:18px;padding:12px;border:0;border-radius:10px;background:var(--pt);color:var(--pt-ink);font-weight:700}
+.door .err{color:var(--bad);font-size:13px;min-height:20px;margin-top:8px}
+.door .first{margin-top:16px;padding:8px 11px;border-radius:9px;background:var(--warn-bg);color:var(--warn-ink);font-size:13px;font-weight:700}
+.door .back{width:100%;margin-top:8px;padding:8px;border:0;background:transparent;color:var(--sub);font-size:13px}
+#emp{font-family:Consolas,monospace;letter-spacing:.5px;font-size:16px}
+#prof .sheet label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px}
+#prof .sheet input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--ink);font:inherit}
+#prof .row2{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
+#prof .row2 button{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:8px 14px}
+#prof .row2 button.go{border:0;background:var(--pt);color:var(--pt-ink);font-weight:700}
+#prof .row2 .sp{flex:1}
+
+/* 대화창 */
+#app{height:100%;height:100dvh;max-width:800px;margin:0 auto;display:flex;flex-direction:column;background:var(--panel);border-inline:1px solid var(--line)}
+header{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+header .who{flex:1;min-width:0}
+header .who b{display:block;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header .who span{display:block;font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{border:1px solid var(--line);background:transparent;border-radius:999px;padding:5px 11px;font-size:12.5px;color:var(--sub);white-space:nowrap;flex:none}
+header #mebtn{max-width:34%;overflow:hidden;text-overflow:ellipsis}
+#strip{background:var(--warn-bg);color:var(--warn-ink);font-size:12.5px;padding:7px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+#strip span{flex:1}
+#strip button{border:0;background:transparent;font-size:14px;line-height:1;padding:2px 4px}
+#list{flex:1;overflow-y:auto;padding:12px 12px 8px}
+.row{display:flex;gap:8px;margin:6px 0;align-items:flex-start}
+.row.q{justify-content:flex-end}
+.row .face{width:32px;height:32px;border-radius:11px;font-size:13px;margin-top:2px}
+.row .face.human{background:var(--human-line)}
+.col{max-width:82%;min-width:0}
+.row.q .col{display:flex;flex-direction:column;align-items:flex-end}
+.name{font-size:12px;color:var(--sub);margin:0 0 3px 2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.badge{font-size:11.5px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn-ink)}
+.badge.hm{background:var(--human);color:var(--human-line)}
+.bub{background:var(--bot);border:1px solid var(--line);border-radius:4px 16px 16px 16px;padding:9px 12px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;box-shadow:var(--shadow)}
+.row.q .bub{background:var(--pt);color:var(--pt-ink);border-color:transparent;border-radius:16px 4px 16px 16px}
+.row.human .bub{background:var(--human);border-color:var(--human-line)}
+.bub img.shot{max-width:100%;display:block;margin:8px 0;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#fff}
+.gone{display:block;font-size:12px;font-style:italic;opacity:.8;margin:6px 0}
+.meta{font-size:11.5px;color:var(--sub);margin:3px 2px 0}
+.wait{display:inline-flex;gap:4px;padding:12px 14px}
+.wait i{width:6px;height:6px;border-radius:50%;background:var(--sub);animation:b 1.2s infinite}
+.wait i:nth-child(2){animation-delay:.2s}.wait i:nth-child(3){animation-delay:.4s}
+@keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.wait i{animation:none}}
+
+/* 문의 한 건 */
+.case{margin:14px 0 6px}
+.case:not(.open){background:var(--card);border:1px solid var(--fold-bd);border-left:4px solid var(--pt);border-radius:12px;box-shadow:var(--fold-sh);padding:9px 12px 10px;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+.case:not(.open):hover{border-color:var(--pt);background:var(--fold-hover);box-shadow:var(--fold-sh-h)}
+.chead{display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:10px;background:var(--chip);font-size:12px;color:var(--sub);cursor:pointer;user-select:none}
+.case:not(.open) .chead{background:transparent;padding:0;border-radius:0}
+.case.open .chead{background:var(--head-open);border:1px solid var(--head-open-bd);color:var(--ink);font-weight:600}
+.chead .cy{font-size:10px;transition:transform .15s;color:var(--pt);font-weight:700}
+.case.open .chead .cy{transform:rotate(90deg)}
+.chead .cid{font-family:Consolas,monospace;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.peek{font-weight:700;font-size:13px;margin:6px 0 0 20px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.case.open .peek{display:none}
+.fold{display:none}
+.case.open .fold{display:block}
+.st{display:inline-block;padding:1px 9px;border-radius:11px;font-size:11.5px;font-weight:700;flex:none}
+.st-접수{background:var(--st-new-bg);color:var(--st-new)}.st-진행중{background:var(--st-prog-bg);color:var(--st-prog)}
+.st-대기{background:var(--st-wait-bg);color:var(--st-wait)}.st-완료{background:var(--st-done-bg);color:var(--st-done)}.st-ai{background:var(--st-ai-bg);color:var(--st-ai)}
+.shots{display:flex;gap:7px;flex-wrap:wrap;margin:6px 0 0 40px}
+.shots a{border:1px solid var(--line);border-radius:7px;padding:4px 10px;font-size:12px;color:var(--pt);text-decoration:none;background:var(--card)}
+.tools{margin:8px 0 0 40px;display:flex;flex-direction:column;gap:7px}
+.tools .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tools button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 12px;font-size:12.5px}
+.tools button:hover{border-color:var(--pt);color:var(--pt)}
+.tools .acts button.go{border-color:var(--pt);background:var(--pt);color:var(--pt-ink);font-weight:700}
+.tools .acts button.go:hover{color:var(--pt-ink);opacity:.92}
+.tools .hint{font-size:12px;color:var(--sub)}
+.closebar{padding:8px 11px;border:1px dashed var(--close-bd);border-radius:10px;background:var(--close-bg);font-size:13px}
+.closebar.done{border-style:solid}
+.closebar .ch{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.closebar button.go{border-color:var(--close-go);background:var(--close-go);color:var(--close-go-ink);font-weight:700;border-radius:7px}
+.closebar button:disabled{opacity:.5;cursor:default}
+.cform{margin-top:8px;padding-top:8px;border-top:1px dashed var(--close-bd);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cform select,.cform input{padding:5px 8px;font:inherit;font-size:12.5px;border:1px solid var(--close-bd);border-radius:6px;background:var(--card);color:var(--ink)}
+.cform input{flex:1;min-width:170px}
+.askmsg{font-size:12px}.askmsg.ok{color:var(--ok)}.askmsg.err{color:var(--bad)}
+
+/* 쓰는 칸 */
+#target{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:var(--sub);background:var(--chip);border-top:1px solid var(--line);flex-wrap:wrap}
+#target.proc{background:var(--warn-bg);color:var(--warn-ink)}
+#target b{color:var(--ink)}
+#target.proc b{color:var(--warn-ink)}
+#target span.t{flex:1;min-width:0}
+#target select{padding:4px 6px;font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);max-width:100%}
+#target button{border:0;background:transparent;font-size:14px;line-height:1;padding:2px 6px;color:var(--sub)}
+#cmsg{font-size:12.5px;padding:0 14px;background:var(--card)}
+#cmsg:not(:empty){padding:6px 14px 0}
+.shotmsg{color:var(--sub)}.shotmsg.err{color:var(--bad)}.shotmsg.ok{color:var(--ok)}
+.composer{display:flex;gap:8px;align-items:flex-end;padding:8px 12px 4px;background:var(--card)}
+.composer button{flex:none;height:42px;border-radius:13px;border:1px solid var(--line);background:var(--card);padding:0 12px}
+.composer #send{border:0;background:var(--pt);color:var(--pt-ink);font-weight:700;padding:0 16px}
+.composer button:disabled{opacity:.5;cursor:default}
+.ed{flex:1;min-width:0;min-height:42px;max-height:38vh;overflow-y:auto;padding:9px 12px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--ink);white-space:pre-wrap;word-break:break-word;outline:none;cursor:text;line-height:1.55}
+.ed.blank:before{content:attr(data-ph);color:var(--sub);pointer-events:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ed img{max-width:100%;vertical-align:bottom;margin:4px 1px;border-radius:6px;border:1px solid var(--line)}
+.foot{font-size:11.5px;color:var(--sub);padding:2px 14px calc(8px + env(safe-area-inset-bottom));background:var(--card)}
+
+/* 이용 안내 */
+#help,#prof{position:fixed;inset:0;background:rgba(10,15,20,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet{width:100%;max-width:800px;max-height:88dvh;overflow-y:auto;background:var(--card);border-radius:16px 16px 0 0;padding:18px 20px 26px}
+.sheet .x{float:right;border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 12px;font-size:12.5px}
+.sheet h2{font-size:15px;margin:0 0 10px}
+.sheet h2:not(:first-of-type){margin-top:20px}
+.sheet ol,.sheet ul{margin:0;padding-left:20px}
+.sheet li{margin:0 0 7px}
+.sheet table{width:100%;border-collapse:collapse;font-size:13px}
+.sheet td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+.sheet td:first-child{white-space:nowrap;width:1%}
+.sheet .note{color:var(--sub);font-size:12px;margin-top:10px}
+header button,.tools button,.sheet .x{min-height:34px}
+
+/* 대화 목록 · 대화방 (2026-11-17 — 카톡형: 문의 1건 = 대화방 1개) */
+#backbtn{width:40px;padding:0;border:0;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+#newbtn{background:var(--pt);color:var(--pt-ink);border-color:transparent;font-weight:700}
+header .st{flex:none}
+#rooms{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--card)}
+#roomlist{flex:1;min-height:0;overflow-y:auto}
+/* 접속자 카드 — 목록 아래 고정 (2026-11-18 담당자 제안) */
+.mecard{flex:none;display:flex;gap:12px;align-items:center;padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
+.mecard .face{width:42px;height:42px;border-radius:14px;flex:none;font-size:15px}
+.mecard .mi{flex:1;min-width:0}
+.mecard .mi b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mecard .mi .emp{display:block;font-size:12px;color:var(--sub);font-family:Consolas,monospace;letter-spacing:.3px}
+.mecard .cnt{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.mecard .cnt button{min-height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:12px}
+.mecard .cnt button.hot{border-color:var(--pt);color:var(--pt);font-weight:700}
+.mecard .acts{display:flex;flex-direction:column;gap:6px;flex:none}
+.mecard .acts button{min-height:30px;padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--sub);font-size:12px}
+@media (pointer:coarse){ .mecard .cnt button,.mecard .acts button{min-height:40px} }
+.filt{display:flex;gap:6px;padding:8px 12px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:var(--card);z-index:1}
+.filt button{min-height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px}
+.filt button[aria-pressed="true"]{background:var(--ink);color:var(--card);border-color:var(--ink);font-weight:700}
+.room{display:flex;gap:12px;align-items:center;width:100%;padding:12px 14px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);text-align:left;font:inherit}
+.room:hover{background:var(--fold-hover)}
+.room .face{width:44px;height:44px;border-radius:15px;flex:none;font-size:15px}
+.room .face.human{background:var(--human-line)}
+.room .face.me{background:var(--sub)}
+.room .mid{flex:1;min-width:0}
+.room .l1,.room .l2{display:flex;gap:6px;align-items:center}
+.room .l2{margin-top:3px}
+.room .tt{flex:1;min-width:0;font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .tm{flex:none;font-size:12px;color:var(--sub)}
+.room .lm{flex:1;min-width:0;font-size:13px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .un{flex:none;min-width:22px;height:22px;padding:0 7px;border-radius:11px;background:#c62828;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.rempty,.rfoot{padding:22px 16px;text-align:center;color:var(--sub);font-size:13px}
+#similar{background:var(--card);border-top:1px solid var(--line);padding:8px 12px 4px;max-height:30vh;overflow-y:auto}
+#similar h2{margin:0 0 2px;font-size:13.5px}
+#similar p{margin:0 0 6px;font-size:12px;color:var(--sub)}
+.sim{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 10px;margin:0 0 6px;color:var(--ink);font:inherit}
+.sim:hover{border-color:var(--pt)}
+.sim b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sim span{display:block;font-size:12.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 화면별로 보이는 것 */
+#app.v-list #list,#app.v-list #target,#app.v-list #cmsg,#app.v-list .composer,#app.v-list .foot,#app.v-list #similar,#app.v-list #backbtn,#app.v-list #hst{display:none}
+#app:not(.v-list) #rooms,#app:not(.v-list) #newbtn,#app:not(.v-list) #ntfbtn,#app:not(.v-list) #helpbtn,#app:not(.v-list) #mebtn,#app:not(.v-list) header .face{display:none}
+#app.v-room #intro-row,#app.v-room .case .chead,#app.v-room .case .peek,#app.v-room #targetx{display:none}
+#app.v-room .case{margin-top:4px}
+#app.v-room.noask .composer,#app.v-room.noask .foot,#app.v-room.noask #target{display:none}
+
+/* PC(1000px 이상): 메신저처럼 왼쪽 대화 목록 + 오른쪽 대화방. 목록 화면 대신 오른쪽에 새 문의가 열린다. */
+@media (min-width:1000px){
+  #app{max-width:1280px;display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto auto auto auto}
+  #app > *{grid-column:2}
+  #app #rooms{display:flex!important;grid-column:1;grid-row:1 / -1;border-right:1px solid var(--line)}
+  #app > header{grid-row:1} #app > #strip{grid-row:2} #app > #list{grid-row:3} #app > #similar{grid-row:4}
+  #app > #target{grid-row:5} #app > #cmsg{grid-row:6} #app > .composer{grid-row:7} #app > .foot{grid-row:8}
+  #app #backbtn{display:none!important}
+  #app #newbtn,#app #ntfbtn,#app #helpbtn,#app #mebtn{display:inline-block!important}
+  .room.cur{background:var(--head-open);box-shadow:inset 3px 0 0 var(--pt)}
+}
+@media (max-width:520px){ header{gap:6px;padding:8px;flex-wrap:wrap} header .face{display:none} header button{padding:5px 10px}
+  #app.v-list header .who{flex:1 1 210px}
+  #app.v-list header #ntfbtn,#app.v-list header #helpbtn,#app.v-list header #mebtn{order:5;flex:1 1 calc(33.333% - 6px);min-width:0;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .col{max-width:88%} .tools,.shots{margin-left:0} .foot{font-size:11px} }
+/* 손가락으로 누르는 기기: 누르는 곳 44px · 키보드 단축키 안내는 숨김 */
+@media (pointer:coarse){ header button,.tools button,.sheet .x,.closebar button,.cform select,.cform input,#target select{min-height:44px} .composer button,.ed{min-height:44px} .foot .kbd{display:none} }
+</style></head><body>
+
+<div id="gate">
+  <div class="door">
+    <div class="face" aria-hidden="true">SD</div>
+    <h1>SD 문의 접수</h1>
+    <p>SAP SD 관련 문의·요청을 남기시면 트리니티봇(AI)이 먼저 안내하고, 담당자가 확인해 답변드립니다.</p>
+    <label for="emp">사번</label>
+    <input id="emp" maxlength="20" placeholder="사번 (숫자 8자리)" autocomplete="username" autocapitalize="characters" spellcheck="false">
+    <div class="hint">처음 한 번만 성함·소속·담당 업무를 등록하면, 다음부터는 <b>사번만으로</b> 들어옵니다. 지난 대화는 서버에 남아 있어 언제 들어와도 이어집니다.</div>
+    <div id="signup" hidden>
+      <div class="first">처음 오셨습니다 — 한 번만 등록해 주세요.</div>
+      <div id="pfields">
+      <label for="name">성함</label>
+      <input id="name" maxlength="40" placeholder="예: 홍길동" autocomplete="name">
+      <label for="org">소속</label>
+      <input id="org" maxlength="60" placeholder="소속 (예: 영업지원팀)" autocomplete="organization">
+      <div class="hint">예전에 같은 성함·소속으로 남기신 문의가 있으면 그대로 이어서 보입니다.</div>
+      <label for="role">담당 업무</label>
+      <input id="role" maxlength="40" list="rolelist" placeholder="예: 영업대표 · 영업지원 · 여신담당 · 재경" autocomplete="off">
+      <datalist id="rolelist">
+        <option value="영업대표"><option value="영업지원"><option value="여신담당">
+        <option value="재경(회계·세금계산서)"><option value="구매"><option value="물류·출고">
+      </datalist>
+      <div class="hint">담당 업무에 따라 안내가 달라집니다. 예) 여신 한도 변경은 여신담당자만 할 수 있는 작업입니다.</div>
+      <label for="spin">선택 PIN (원하면 설정 · 4~8자리 숫자)</label>
+      <input id="spin" type="password" inputmode="numeric" maxlength="8" placeholder="비워 두시면 사번만으로 들어옵니다" autocomplete="new-password">
+      </div>
+    </div>
+    <div id="pingrp" hidden>
+      <label for="pin">선택 PIN</label>
+      <input id="pin" type="password" inputmode="numeric" maxlength="8" placeholder="설정하신 숫자 4~8자리" autocomplete="current-password">
+      <div class="hint">이 사번은 PIN 이 설정되어 있습니다. 잊으셨으면 담당자에게 해제를 요청해 주세요.</div>
+    </div>
+    <div class="err" id="gerr" role="alert"></div>
+    <button class="go" id="go" type="button">들어가기</button>
+    <button class="back" id="back" type="button" hidden>다른 사번으로</button>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <button id="backbtn" type="button" aria-label="대화 목록으로"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="face" aria-hidden="true">SD</div>
+    <div class="who"><b id="htitle">SD 문의</b><span id="hsub">담당자 확인 후 답변드립니다 · AI 가 먼저 안내한 답에는 표기가 붙습니다</span></div>
+    <span id="hst" class="st" hidden></span>
+    <button id="newbtn" type="button">새 문의</button>
+    <button id="ntfbtn" type="button">알림 켜기</button>
+    <button id="helpbtn" type="button">이용 안내</button>
+    <button id="mebtn" type="button" title="성함·소속·담당 업무 바꾸기"></button>
+  </header>
+  <div id="strip" role="status" hidden><span id="ntfmsg"></span><button id="stripx" type="button" aria-label="닫기">✕</button></div>
+  <div id="rooms">
+    <div class="filt" role="group" aria-label="문의 걸러 보기">
+      <button type="button" data-f="all" aria-pressed="true">전체</button>
+      <button type="button" data-f="new" aria-pressed="false">새 답</button>
+      <button type="button" data-f="open" aria-pressed="false">진행 중</button>
+      <button type="button" data-f="done" aria-pressed="false">종결</button>
+    </div>
+    <div id="roomlist"></div>
+    <div id="mecard" class="mecard" aria-label="접속 정보"></div>
+  </div>
+  <div id="list" role="log" aria-live="polite" aria-label="문의와 답변"></div>
+  <div id="similar" hidden></div>
+  <div id="target">
+    <span class="t" id="targettxt"></span>
+    <select id="type" aria-label="문의 유형">
+      <option value="단순문의">단순문의 — 사용법·확인 요청</option>
+      <option value="일반요청">일반요청 — 권한·설정·데이터 처리</option>
+      <option value="긴급문의">긴급문의 — 업무가 멈춰 있음</option>
+    </select>
+    <button id="targetx" type="button" aria-label="추가 질문 취소 — 새 문의로" hidden>✕</button>
+  </div>
+  <div id="cmsg" class="shotmsg" role="status"></div>
+  <div class="composer">
+    <button type="button" id="pick" title="파일에서 사진 넣기" aria-label="파일에서 사진 넣기">사진</button>
+    <input type="file" id="shots" accept="image/*" multiple style="display:none">
+    <div id="q" class="ed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="문의 내용"
+         data-msg="cmsg" data-msgcls="shotmsg" data-ph=""></div>
+    <button type="button" id="send">보내기</button>
+  </div>
+  <div class="foot"><span class="kbd">Ctrl+Enter 로 보내기 · 캡처한 화면은 글 사이 원하는 자리에 Ctrl+V · </span>문의당 사진 __SHOT_MAX__장 · 종결되면 사진은 자동 삭제</div>
+</div>
+
+<div id="help" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="이용 안내">
+    <button class="x" id="helpx" type="button">닫기</button>
+    <h2>이렇게 쓰세요</h2>
+    <ol>
+      <li>아래 칸에 문의를 적고 <b>보내기</b>를 누릅니다. 문의 유형은 칸 위에서 고릅니다. 화면 캡처는 글 사이에 <b>Ctrl+V</b>로 붙입니다.</li>
+      <li>답변은 이 대화창에 이어서 올라옵니다. 대화는 서버에 남아 있어 <b>사번으로 다시 들어오면 그대로 이어집니다</b>(다른 PC 에서도). 위쪽 <b>[알림 켜기]</b>를 누르면, <b>이 화면(탭)이 열려 있는 동안</b> 새 답변이 올라올 때 알려 드립니다(브라우저 알림 · 접속 주소가 http일 때는 탭 제목에 (1) 표시). <b>화면을 닫으면 알림이 가지 않으니</b> 이 주소를 즐겨찾기 해두시고, 닫아 두셨다면 다시 열어 확인해 주세요.</li>
+      <li><b>「추가 정보 필요」</b>가 뜨면 필요한 정보를 <b>한 번에 모아</b> 그 문의에 이어서 보내 주세요. 그러면 정확히 안내해 드립니다.</li>
+      <li>답변을 보고 더 궁금한 점은 그 문의 아래 <b>[이어서 질문]</b>을 누르고 적습니다. 지금까지의 문의·답변을 그대로 두고 이어집니다.</li>
+      <li>해결되셨으면 <b>[케이스 닫기 및 평가]</b>를 눌러 주세요. 닫은 뒤에도 추가 질문을 남기면 다시 열립니다.</li>
+    </ol>
+    <h2>상태 표시</h2>
+    <table>
+      <tr><td><span class="st st-접수">접수</span> <span class="st st-접수">확인 중</span> <span class="st st-진행중">진행중</span></td><td>문의가 들어왔고 확인하는 중입니다.</td></tr>
+      <tr><td><span class="st st-ai">1차 답변 완료</span></td><td>AI 가 먼저 안내를 드렸습니다. 해결되셨으면 [케이스 닫기 및 평가], 더 필요하시면 [이어서 질문]으로 남겨 주세요.</td></tr>
+      <tr><td><span class="st st-접수">추가 정보 필요</span></td><td>정확한 안내를 위해 확인할 내용이 있습니다. 답변에 적힌 항목을 한 번에 알려 주세요.</td></tr>
+      <tr><td><span class="st st-대기">담당자 확인 대기</span></td><td>AI 가 확정하지 못해 담당자가 확인합니다. 담당자가 돌아오는 대로 답변드립니다.</td></tr>
+      <tr><td><span class="st st-완료">문의자 종결</span> <span class="st st-완료">완료</span></td><td>마무리된 문의입니다. 닫은 뒤에도 추가 질문을 남기면 다시 열립니다.</td></tr>
+    </table>
+    <h2>알아 두실 점</h2>
+    <ul>
+      <li>답변 위에 <b>「AI 1차 안내」</b> 표기가 붙어 있으면 트리니티봇(AI)이 먼저 드린 안내입니다. 확정 답변이 아니며, 담당자가 확인해 달라지는 부분이 있으면 정정드립니다.</li>
+      <li>근거가 부족하면 <b>「추정입니다」</b>라고 밝히고, 케이스를 닫지 않은 채 담당자에게 보고하겠다고 안내합니다.</li>
+      <li>운영 데이터의 직접 수정·삭제, 비밀번호·권한 부여는 안내만 드리고 담당자가 처리합니다. 여신 한도 변경 같은 기준정보 변경은 여신담당자에게 요청하셔야 합니다.</li>
+      <li><b>비밀번호·개인정보는 적지 마세요.</b> 화면 캡처에 고객명·금액이 있으면 꼭 필요한 부분만 남겨 주세요.</li>
+      <li>화면(T-Code)·문서번호·오류 문구가 있으면 확인이 훨씬 빨라집니다. 사진은 문의당 최대 __SHOT_MAX__장이고, 큰 사진은 자동으로 줄여서 넣습니다.</li>
+      <li>보낸 문의는 고치거나 지울 수 없습니다. 그래서 <b>Enter 는 줄바꿈</b>이고 <b>Ctrl+Enter</b> 또는 [보내기]로 보냅니다.</li>
+      <li>업무가 멈출 정도로 급한 건, 또는 이 화면이 열리지 않을 때는 기다리지 말고 <b>운영팀장님</b>께 직접 문의해 주세요.</li>
+    </ul>
+    <div class="note">문의 내용과 답변은 본인(같은 사번)과 담당자만 볼 수 있고, 첨부 사진은 문의가 종결되면 자동으로 삭제됩니다(글은 남습니다). 사번만으로 들어오므로 <b>공용 PC 에서는 다 쓰신 뒤 위쪽 이름 단추 › 로그아웃</b>을 눌러 주세요.</div>
+  </div>
+</div>
+
+<div id="prof" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="내 정보">
+    <button class="x" id="profx" type="button">닫기</button>
+    <h2>내 정보</h2>
+    <div class="sub" id="profemp" style="color:var(--sub);font-size:13px"></div>
+    <label for="pname">성함</label><input id="pname" maxlength="40" autocomplete="name">
+    <label for="porg">소속</label><input id="porg" maxlength="60" autocomplete="organization">
+    <label for="prole">담당 업무</label><input id="prole" maxlength="40" list="rolelist" autocomplete="off">
+    <div class="note">소속이나 담당 업무가 바뀌면 고쳐 주세요. 예전 소속으로 남기신 문의도 계속 보입니다.</div>
+    <div class="err" id="perr" role="alert" style="color:var(--bad);font-size:13px;min-height:18px;margin-top:8px"></div>
+    <div class="row2"><button class="go" id="psave" type="button">저장</button><span class="sp"></span>
+      <button id="logout" type="button">로그아웃 (다른 사번으로)</button></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+    <div class="note" id="pinst" style="margin-top:0"></div>
+    <div class="row2" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+      <input id="pcur" type="password" inputmode="numeric" maxlength="8" placeholder="현재 PIN" autocomplete="current-password" style="flex:1;min-width:110px" hidden>
+      <input id="pnew" type="password" inputmode="numeric" maxlength="8" placeholder="새 PIN (숫자 4~8자리 · 비우면 해제)" autocomplete="new-password" style="flex:1;min-width:160px">
+      <button id="ppinsave" type="button">PIN 저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/*__INTAKE_LIB__*/
+</script>
+<script>
+"use strict";
+// ── 대화창 — 위 스크립트(운영 화면에서 뽑아 온 입력칸·공통 함수)를 쓴다 ─────────────────
+var ME = null, ITEMS = [], SIG = null, TARGET = "", AUTO_TARGET = "", PENDING_NEW = "", OPENED = {}, CFORM = {}, DISMISS = {}, REVS = {}, busy = false, first = true;
+var BOT_HEADS = ["[트리니티봇", "[담당자 부재중"], STICK = true;
+var PH_NEW = "어떤 화면에서 무엇을 하시려다 막히셨는지 적어주세요. 캡처한 화면은 글 사이 원하는 자리에 Ctrl+V 로 붙여넣으시면 됩니다.";
+var PH_ASK = "이어서 여쭤볼 내용을 적어주세요.";
+var PH_PROC = "빠뜨린 내용이나 화면이 있으면 지금 바로 적어 보내세요 (처리 중인 트리니티봇이 바로 함께 참고합니다).";
+function $(id){ return document.getElementById(id); }
+function el(tag, cls, text){ var e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; return e; }
+function btn(label, fn, cls){ var b = el("button", cls || "", label); b.type = "button"; b.onclick = fn; return b; }
+function say(text, kind){ var m = $("cmsg"); m.className = "shotmsg" + (kind ? " " + kind : ""); m.textContent = text || ""; }
+function item(id){ for(var i = 0; i < ITEMS.length; i++) if(ITEMS[i].id === id) return ITEMS[i]; return null; }
+
+var qEd = $("q");
+makeEditor(qEd);
+$("pick").onclick = function(){ edSaveRange(qEd); $("shots").click(); };
+$("shots").addEventListener("change", function(e){
+  var fl = Array.prototype.slice.call(e.target.files || []);
+  e.target.value = "";
+  edAddImages(qEd, fl);
+});
+
+// ── 사번 로그인 ─────────────────────────────────────────────────────────
+// 사번은 이 브라우저에 기억한다. 서버는 로그인마다 세션 토큰을 주고(메모리에만), 서버가 다시 켜져 토큰이 사라지면
+// 기억한 사번으로 조용히 다시 로그인한다 — 사람은 아무것도 다시 입력하지 않는다.
+var EMP_K = "sd-intake-emp-v1", EMP = "", TOK = "", LAST_ACT = Date.now(), IDLE_MS = 30 * 60 * 1000;
+function empGet(){ try{ return localStorage.getItem(EMP_K) || ""; }catch(e){ return ""; } }
+function empPut(v){ try{ if(v) localStorage.setItem(EMP_K, v); else localStorage.removeItem(EMP_K); }catch(e){} }
+function normEmp(s){ return String(s || "").replace(/\s+/g, "").toUpperCase(); }
+function mkReqId(){ return "r_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 10); }
+function touchAct(){ LAST_ACT = Date.now(); }
+["keydown", "pointerdown", "input"].forEach(function(ev){ document.addEventListener(ev, touchAct, true); });
+async function postJ(path, body){
+  var h = {"Content-Type": "application/json", "X-Requested-With": "SDChat"};
+  if(TOK) h["X-Chat-Token"] = TOK;
+  var r = await fetch(path, {method: "POST", credentials: "same-origin", headers: h, body: JSON.stringify(body)});
+  return await readJson(r);
+}
+async function relogin(){
+  if(!EMP) return false;
+  try{ var j = await postJ("/api/login", {emp: EMP}); }catch(e){ return false; }
+  if(j && j.ok){ TOK = j.tok; ME = j.profile; drawMe(); return true; }
+  return false;
+}
+// 쿠키 + 헤더 토큰을 실어 부르고, 세션이 만료됐으면(서버 재시작 등) 한 번 다시 로그인해 같은 요청을 다시 보낸다.
+async function api(path, body){
+  for(var i = 0; i < 2; i++){
+    var j;
+    if(body === undefined){
+      var h = {"X-Requested-With": "SDChat"};
+      if(TOK) h["X-Chat-Token"] = TOK;
+      var r = await fetch(path, {cache: "no-store", credentials: "same-origin", headers: h});
+      j = await readJson(r);
+    } else j = await postJ(path, body);
+    if(!(j && j.auth) || i) return j;
+    if(!(await relogin())){ gateShow("다시 들어와 주십시오."); return j; }
+  }
+}
+function gerr(t){ $("gerr").textContent = t || ""; }
+var EMP_FMT = /^\d{8}$/;
+function pinMode(on){ $("pingrp").hidden = !on; if(!on) set("pin", ""); }
+function signupMode(on){
+  if(on) pinMode(false);
+  $("signup").hidden = !on; $("back").hidden = !on;
+  $("go").textContent = on ? "등록하고 시작" : "들어가기";
+  $("emp").readOnly = on;
+}
+// 예전 화면이 이 브라우저에 남긴 성함·소속은 **미리 채우지 않는다** — 공용 PC 에서 앞사람 이름이 채워진 채 등록되면
+// 그 사람의 예전 문의가 새 사번에 이어진다(성함·소속으로 예전 문의를 잇기 때문). 담당 업무만 채운다.
+function prefill(){
+  var m = me();
+  if(m.role && !val("role")) set("role", m.role);
+}
+async function enter(){
+  var emp = normEmp(val("emp")), b = $("go");
+  if(!/^[A-Z0-9][A-Z0-9-]{2,19}$/.test(emp)){ gerr("사번을 확인해 주세요 (영문 · 숫자 3~20자)."); $("emp").focus(); return; }
+  if(b.disabled) return;
+  set("emp", emp);
+  b.disabled = true; gerr("");
+  try{
+    var j;
+    if($("signup").hidden){
+      var pin = val("pin");
+      j = await postJ("/api/login", pin ? {emp: emp, pin: pin} : {emp: emp});
+      if(j && j.signup){
+        signupMode(true); prefill(); $("name").focus();
+        // 사번은 보통 숫자 8자리 · 1 또는 4 로 시작(2026-11-18 담당자 확인). 막지는 않고 오타로 엉뚱한 계정이 생기지 않게 경고만.
+        if(!EMP_FMT.test(emp)) gerr("입력하신 사번 「" + emp + "」은 보통 형식(숫자 8자리)과 다릅니다. 오타가 아닌지 확인해 주세요. 틀렸으면 아래 [다른 사번으로], 맞으면 그대로 등록하시면 됩니다.");
+        return;
+      }
+      if(j && j.need_pin){
+        pinMode(true);
+        gerr(j.error || "이 사번은 PIN 이 설정되어 있습니다. PIN 을 입력해 주세요.");
+        $("pin").focus();
+        return;
+      }
+    } else {
+      var name = val("name"), org = val("org"), role = val("role"), spin = val("spin");
+      if(!name){ gerr("성함을 입력해 주세요."); $("name").focus(); return; }
+      if(!org){ gerr("소속을 입력해 주세요."); $("org").focus(); return; }
+      if(!role){ gerr("담당 업무를 입력해 주세요. 담당에 따라 안내가 달라집니다 (예: 영업대표, 여신담당)."); $("role").focus(); return; }
+      j = await postJ("/api/signup", spin ? {emp: emp, name: name, org: org, role: role, pin: spin} : {emp: emp, name: name, org: org, role: role});
+    }
+    if(!j || !j.ok){ gerr((j && j.error) || "들어가지 못했습니다."); return; }
+    EMP = emp; TOK = j.tok; empPut(emp); pinMode(false);
+    start(j.profile, j.earlier);
+  }catch(e){ gerr("서버에 연결하지 못했습니다. 잠시 뒤 다시 눌러 주세요."); }
+  finally{ b.disabled = false; }
+}
+function drawMe(){ if(ME) $("mebtn").textContent = ME.name + " · " + ME.org; }
+function start(p, earlier){
+  ME = p; ITEMS = []; SIG = null; TARGET = ""; AUTO_TARGET = ""; PENDING_NEW = ""; OPENED = {}; CFORM = {}; REVS = {}; first = true; touchAct();
+  $("gate").hidden = true; $("app").hidden = false;
+  drawMe();
+  $("list").textContent = "";
+  VDRAFT = {}; VKEY = "list";
+  setTarget("", false); ntfDraw(); route(); loadMine(); pulseSchedule();
+  if(earlier) say("등록되었습니다. 예전에 같은 성함·소속으로 남기신 문의 " + earlier + "건을 이어서 보여 드립니다.", "ok");
+}
+function gateShow(msg){
+  clearTimeout(PULSE.timer); ME = null; TOK = "";
+  $("app").hidden = true; $("prof").hidden = true; $("gate").hidden = false;
+  set("emp", EMP); signupMode(false); pinMode(false); gerr(msg || ""); $("emp").focus();
+}
+function edBlankNow(){ return !edSerialize(qEd).text; }
+$("go").onclick = enter;
+$("back").onclick = function(){ signupMode(false); pinMode(false); gerr(""); set("emp", ""); $("emp").focus(); };
+$("pin").addEventListener("keydown", function(e){
+  if(e.key === "Enter" && !e.isComposing && e.keyCode !== 229) enter();
+});
+["emp", "name", "org", "role", "spin"].forEach(function(id, i, all){
+  $(id).addEventListener("keydown", function(e){
+    if(e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;   // 한글 조합 중의 Enter 는 넘기기가 아니다
+    if(id === "emp" || i === all.length - 1 || $("signup").hidden) enter(); else $(all[i + 1]).focus();
+  });
+});
+
+// ── 내 정보 (소속 · 담당 업무 바꾸기 · PIN · 로그아웃) ────────────────────────
+var profFrom = null;
+function drawPinPanel(){
+  var on = !!(ME && ME.pin_set);
+  $("pinst").textContent = on ? "선택 PIN 설정됨 — 새 PIN 을 비우고 [PIN 저장]을 누르면 해제됩니다."
+                              : "선택 PIN 미설정 — 원하시면 숫자 4~8자리 PIN 을 걸 수 있습니다.";
+  $("pcur").hidden = !on;
+  set("pcur", ""); set("pnew", "");
+}
+$("mebtn").onclick = function(){
+  profFrom = document.activeElement;
+  $("profemp").textContent = "사번 " + EMP;
+  set("pname", ME.name); set("porg", ME.org); set("prole", ME.role); $("perr").textContent = "";
+  drawPinPanel();
+  $("prof").hidden = false; $("porg").focus();
+};
+function profClose(){ $("prof").hidden = true; if(profFrom && profFrom.focus) profFrom.focus(); }
+$("profx").onclick = profClose;
+$("prof").addEventListener("click", function(e){ if(e.target === $("prof")) profClose(); });
+$("psave").onclick = async function(){
+  var b = this; if(b.disabled) return;
+  b.disabled = true; $("perr").textContent = "";
+  try{
+    var j = await api("/api/profile", {name: val("pname"), org: val("porg"), role: val("prole")});
+    if(j && j.ok){ ME = j.profile; drawMe(); profClose(); say("내 정보를 저장했습니다.", "ok"); SIG = null; loadMine(); }
+    else $("perr").textContent = (j && j.error) || "저장하지 못했습니다.";
+  }catch(e){ $("perr").textContent = "서버에 연결하지 못했습니다."; }
+  b.disabled = false;
+};
+$("ppinsave").onclick = async function(){
+  var b = this; if(b.disabled) return;
+  b.disabled = true; $("perr").textContent = "";
+  try{
+    var j = await api("/api/pin", {cur_pin: val("pcur"), new_pin: val("pnew")});
+    if(j && j.ok){
+      ME = j.profile; drawPinPanel();
+      say(ME.pin_set ? "PIN 을 저장했습니다." : "PIN 을 해제했습니다.", "ok");
+    } else $("perr").textContent = (j && j.error) || "PIN 을 저장하지 못했습니다.";
+  }catch(e){ $("perr").textContent = "서버에 연결하지 못했습니다."; }
+  b.disabled = false;
+};
+$("logout").onclick = async function(){
+  if(!edBlankNow() && !confirm("쓰던 글이 있습니다. 지우고 나가시겠습니까?")) return;
+  try{ await postJ("/api/logout", {}); }catch(e){}
+  edClear(qEd); say(""); empPut(""); EMP = ""; ntfTitle(0);
+  gateShow("로그아웃했습니다. 이 PC 에 사번을 남기지 않았습니다.");
+};
+
+// ── 불러오기 ───────────────────────────────────────────────────────────
+async function loadMine(){
+  if(!ME) return;
+  var my = ++loadSeq;
+  try{
+    var j = await api("/api/mine");
+    if(my !== loadSeq || !ME) return;                // 더 나중의 새로고침이 그리고 있다
+    if(!j.ok){ if(first) say(j.error || "불러오지 못했습니다.", "err"); return; }
+    var sig = JSON.stringify(j.items);
+    ITEMS = (j.items || []).slice().reverse();        // 서버는 최신순 — 대화창은 오래된 것부터
+    REVS = {}; ITEMS.forEach(function(d){ REVS[d.id] = d.rev; });
+    baselineRead();
+    if(sig !== SIG){ SIG = sig; render(); }
+    ntfMark(ITEMS);
+    ntfJump();
+  }catch(e){ if(my === loadSeq && first) say("서버에 연결하지 못했습니다.", "err"); }
+}
+
+function shotUrl(id, k){
+  return "/api/shot?id=" + encodeURIComponent(id) + "&n=" + k;
+}
+// 본문의 [[사진:N]] 자리에 실제 그림을 끼운다. 앞뒤 줄바꿈 하나씩은 그림이 대신한다.
+function fill(box, text, id, used){
+  var re = new RegExp("(" + NL + ")?" + TOKEN_RE + "(" + NL + ")?", "g"), at = 0, m;
+  while((m = re.exec(text))){
+    if(m.index > at) box.appendChild(document.createTextNode(text.slice(at, m.index)));
+    var k = m[2], im = el("img", "shot");
+    used[k] = 1;
+    im.alt = "스크린샷 " + k; im.src = shotUrl(id, k);
+    im.onload = function(){ if(STICK){ var L = $("list"); L.scrollTop = L.scrollHeight; } };   // 사진이 늦게 떠도 맨 아래를 지킨다
+    im.onclick = function(){ window.open(this.src); };
+    im.onerror = function(){ this.replaceWith(el("span", "gone", "(사진을 불러오지 못했습니다 — 종결된 문의의 사진은 자동으로 지워집니다)")); };
+    box.appendChild(im);
+    at = m.index + m[0].length;
+  }
+  if(at < text.length) box.appendChild(document.createTextNode(text.slice(at)));
+}
+function isBot(text){ return BOT_HEADS.some(function(h){ return text.indexOf(h) === 0; }); }
+function turnsOf(d){
+  var turns = (d && d.turns && d.turns.length) ? d.turns : (d ? [{role: "q", when: "", text: d.q}, {role: "a", when: "", text: d.a}] : []);
+  return turns.filter(function(t){ return t && t.text; });
+}
+function isHumanLocked(d){
+  return turnsOf(d).some(function(t){ return t.role === "a" && !isBot(t.text); });
+}
+function isBotProcessing(d){
+  if(!d || d.closed || d.status === "완료" || !d.can_ask || isHumanLocked(d)) return false;
+  var turns = turnsOf(d);
+  var waiting = turns.length && turns[turns.length - 1].role === "q";
+  return !d.a || d.label === "확인 중" || waiting;
+}
+// 답 머리의 [트리니티봇 · AI 1차 안내 · …] 줄은 말풍선 위 배지로 올린다 — 표기는 사라지지 않고 더 눈에 띄게 된다.
+function headOf(text){
+  var i = text.indexOf(NL), line = i < 0 ? text : text.slice(0, i);
+  if(isBot(text) && line.charAt(line.length - 1) === "]"){
+    var parts = line.slice(1, line.length - 1).split(" · ");
+    return {badge: parts.length > 1 ? parts[1] : "AI 안내", body: i < 0 ? "" : text.slice(i + 1)};
+  }
+  return {badge: "", body: text};
+}
+function turn(d, t, i, used){
+  var row, col = el("div", "col");
+  if(t.role === "q"){
+    row = el("div", "row q");
+    var b = el("div", "bub"); fill(b, t.text, d.id, used); col.appendChild(b);
+    col.appendChild(el("div", "meta", i === 0 ? "내 문의" : "추가 질문" + (t.when ? " · " + t.when : "")));
+    row.appendChild(col); return row;
+  }
+  var bot = isBot(t.text), h = headOf(t.text);
+  row = el("div", "row" + (bot ? "" : " human"));
+  row.appendChild(el("div", "face" + (bot ? "" : " human"), bot ? "원" : "담"));
+  var nm = el("div", "name", bot ? "트리니티봇" : "담당자");
+  nm.appendChild(el("span", "badge" + (bot ? "" : " hm"), bot ? h.badge : "담당자 답변"));
+  col.appendChild(nm);
+  var bb = el("div", "bub"); fill(bb, h.body || t.text, d.id, used); col.appendChild(bb);
+  col.appendChild(el("div", "meta", "답변" + (t.when ? " · " + t.when + " (서울)" : "")));
+  row.appendChild(col); return row;
+}
+function intro(box){
+  var row = el("div", "row"), col = el("div", "col");
+  row.appendChild(el("div", "face", "SD"));
+  col.appendChild(el("div", "name", "SD 문의 접수"));
+  col.appendChild(el("div", "bub", ME.name + "님, 안녕하세요. SAP SD 관련 문의·요청을 남기시면 담당자가 확인 후 답변드립니다." + NL + NL
+    + "· 화면(T-Code)·문서번호·오류 문구가 있으면 확인이 훨씬 빨라집니다." + NL
+    + "· 캡처한 화면은 글 사이 원하는 자리에 Ctrl+V 로 붙여 넣으시면 됩니다." + NL
+    + "· 비밀번호·개인정보는 적지 마세요." + NL + NL
+    + "처음이시면 위의 「이용 안내」를 먼저 읽어 보세요."));
+  if(!ITEMS.length) col.appendChild(el("div", "meta", "아직 남기신 문의가 없습니다. 성함·소속이 예전과 정확히 같아야 이전 문의가 보입니다."));
+  row.appendChild(col); box.appendChild(row);
+}
+function caseBox(d, newest){
+  var turns = turnsOf(d);
+  var box = el("div", "case"); box.id = "it-" + d.id;
+  var done = d.closed || d.status === "완료";
+  var open = (d.id in OPENED) ? OPENED[d.id] : (newest || !done);      // 끝난 옛 문의는 접어 둔다
+  if(open) box.classList.add("open");
+
+  var last = "";
+  turns.forEach(function(t){ if(t.role === "a" && t.when) last = t.when; });
+  var head = el("div", "chead"); head.tabIndex = 0; head.setAttribute("role", "button");
+  head.appendChild(el("span", "cy", "▶"));
+  head.appendChild(el("span", "cid", d.id + " · " + d.date + " · " + d.type + (last ? " · 답변 " + last : "")));
+  head.appendChild(el("span", "st st-" + (LABEL_CLS[d.label] || d.status), d.label || d.status));
+  var toggle = function(){ OPENED[d.id] = !box.classList.contains("open"); box.classList.toggle("open"); };
+  head.onclick = function(e){ e.stopPropagation(); toggle(); };
+  head.onkeydown = function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); toggle(); } };
+  box.appendChild(head);
+
+  var peek = (turns.length ? turns[0].text : "").replace(tokenRe(), " 🖼 ").split(NL)
+      .map(function(x){ return x.trim(); }).filter(Boolean).join(" ");
+  var pch = Array.from(peek);
+  var peekEl = el("div", "peek", pch.length > 42 ? pch.slice(0, 42).join("") + "…" : peek);
+  peekEl.onclick = function(e){ e.stopPropagation(); toggle(); };
+  box.appendChild(peekEl);
+  box.onclick = function(){ if(!box.classList.contains("open")) toggle(); };
+
+  var fold = el("div", "fold"), used = {};
+  turns.forEach(function(t, i){ fold.appendChild(turn(d, t, i, used)); });
+  var waiting = !d.closed && d.status !== "완료" && turns.length && turns[turns.length - 1].role === "q";
+  if(!d.a || d.label === "확인 중" || waiting){      // 아직 답이 없거나 새 추가 질문에 답하기 전
+    var humanLocked = isHumanLocked(d);
+    var w = el("div", "row" + (humanLocked ? " human" : "")), wc = el("div", "col"), wb = el("div", "bub wait");
+    wb.setAttribute("aria-label", humanLocked ? "담당자 확인 대기 중입니다" : "확인하는 중입니다");
+    wb.appendChild(el("i")); wb.appendChild(el("i")); wb.appendChild(el("i"));
+    w.appendChild(el("div", "face" + (humanLocked ? " human" : ""), humanLocked ? "담" : "원")); wc.appendChild(wb);
+    wc.appendChild(el("div", "meta", humanLocked
+      ? "담당자 답변이 달린 문의입니다 — 트리니티봇(AI)이 아닌 담당자가 확인 후 답변드립니다."
+      : "트리니티봇이 확인하는 중입니다 — 빠뜨린 내용이나 화면을 아래 칸에 보내시면 진행 중인 확인에 바로 반영됩니다."));
+    w.appendChild(wc); fold.appendChild(w);
+  }
+  var extra = (d.shots || []).filter(function(k){ return !used[String(k)]; });   // 글 속에 자리가 없는 예전 첨부
+  if(extra.length){
+    var sh = el("div", "shots");
+    extra.forEach(function(k){ var a = el("a", "", "📎 첨부 " + k); a.href = shotUrl(d.id, k); a.target = "_blank"; a.rel = "noopener"; sh.appendChild(a); });
+    fold.appendChild(sh);
+  }
+  fold.appendChild(tools(d));
+  box.appendChild(fold);
+  return box;
+}
+function tools(d){
+  var t = el("div", "tools"), id = d.id;
+  if(d.closed){
+    var s = "✔ 문의자 종결";
+    if(d.score) s += " (만족도: " + "★".repeat(d.score) + "☆".repeat(Math.max(0, 5 - d.score)) + " " + d.score + "점" + (d.feedback ? " · " + d.feedback : "") + ")";
+    t.appendChild(el("div", "closebar done", s + " · 닫은 뒤에도 추가 질문을 남기시면 다시 열립니다."));
+  } else if(d.can_close){
+    var st = CFORM[id] || (CFORM[id] = {open: false, score: "5", fb: ""});
+    var bar = el("div", "closebar"), ch = el("div", "ch"), form = el("div", "cform");
+    ch.appendChild(el("span", "", "이 답변으로 해결되셨나요?"));
+    ch.appendChild(btn("케이스 닫기 및 평가", function(){ st.open = !st.open; form.hidden = !st.open; }, "go"));
+    var msg = el("span", "askmsg"); msg.id = "cm-" + id; ch.appendChild(msg);
+    bar.appendChild(ch);
+    form.hidden = !st.open;
+    form.appendChild(el("span", "", "만족도:"));
+    var sel = el("select"); sel.id = "cs-" + id; sel.setAttribute("aria-label", "만족도");
+    [["5", "⭐⭐⭐⭐⭐ 5점 (매우 만족)"], ["4", "⭐⭐⭐⭐ 4점 (만족)"], ["3", "⭐⭐⭐ 3점 (보통)"],
+     ["2", "⭐⭐ 2점 (아쉬움)"], ["1", "⭐ 1점 (틀림·불만족)"]].forEach(function(o){
+      var op = el("option", "", o[1]); op.value = o[0]; sel.appendChild(op); });
+    sel.value = st.score; sel.onchange = function(){ st.score = sel.value; };
+    var fb = el("input"); fb.type = "text"; fb.id = "cfb-" + id; fb.maxLength = 200;
+    fb.placeholder = "트리니티봇 개선을 위한 한줄 의견 (선택)"; fb.setAttribute("aria-label", fb.placeholder);
+    fb.value = st.fb; fb.oninput = function(){ st.fb = fb.value; };
+    var go = btn("종결 완료", function(){ sendClose(id); }, "go"); go.setAttribute("data-close", id);
+    if(SENDING["c" + id]) go.disabled = true;
+    form.appendChild(sel); form.appendChild(fb); form.appendChild(go);
+    bar.appendChild(form); t.appendChild(bar);
+  }
+  var acts = el("div", "acts");
+  if(d.can_ask){
+    var proc = isBotProcessing(d);
+    if(TARGET !== id) acts.appendChild(btn(proc ? "추가 내용 지금 보내기" : "이어서 질문", function(){ AUTO_TARGET = ""; PENDING_NEW = ""; setTarget(id, true); }, proc ? "go" : ""));
+    else acts.appendChild(el("span", "hint", "아래 칸에 이어서 적고 있습니다."));   // 처리 중 안내는 대기 말풍선 · 아래 쓰는 칸 띠가 이미 한다(3중 반복 제거)
+  } else acts.appendChild(el("span", "hint", "이 문의에는 더 추가하실 수 없습니다. 새 문의로 남겨주세요."));
+  t.appendChild(acts);
+  return t;
+}
+function render(){
+  var box = $("list"), near = box.scrollHeight - box.scrollTop - box.clientHeight < 90, prevTop = box.scrollTop;
+  if(PENDING_NEW && item(PENDING_NEW)) PENDING_NEW = "";
+  // 대화방 = 그 문의 한 건만 보이고, 쓰는 칸은 늘 그 문의에 이어 쓴다(처리 중이면 「지금 보내기」). 새 문의 화면 = 쓰는 칸이 새 문의.
+  var shown = [];
+  if(VIEW === "room"){
+    var rd = item(ROOM);
+    if(!rd && ROOM !== PENDING_NEW && SIG !== null){ go(""); return; }      // 없는 방(지운 기록 · 다른 사람) — 목록으로
+    if(rd) shown = [rd];
+    $("app").classList.toggle("noask", !!rd && !rd.can_ask);
+    if(!rd || rd.can_ask) setTarget(ROOM, false, true);
+    else if(TARGET) setTarget("", false, true);
+    if(rd && !document.hidden) markRead(rd);
+  } else if(TARGET){ AUTO_TARGET = ""; setTarget("", false, true); }
+  drawHead(); drawRooms();
+
+  var isig = (ME ? ME.name : "") + "|" + (ITEMS.length ? "1" : "0");
+  var introEl = $("intro-row");
+  if(!introEl || introEl.dataset.isig !== isig){
+    var frag = document.createDocumentFragment();
+    intro(frag);
+    var newIntro = frag.firstChild;
+    newIntro.id = "intro-row";
+    newIntro.dataset.isig = isig;
+    if(introEl) box.replaceChild(newIntro, introEl);
+    else box.insertBefore(newIntro, box.firstChild);
+  }
+
+  var keep = {"intro-row": 1};
+  var anchor = $("intro-row");
+  shown.forEach(function(d){
+    var cid = "it-" + d.id, newest = true;
+    keep[cid] = 1;
+    var csig = JSON.stringify([d, newest, TARGET === d.id]);
+    var cur = $(cid);
+    if(cur && cur.dataset.csig === csig){
+      if(cur.previousElementSibling !== anchor) box.insertBefore(cur, anchor ? anchor.nextSibling : null);
+      anchor = cur;
+      return;
+    }
+    var ae = document.activeElement;
+    var focusId = (cur && ae && cur.contains(ae) && ae.id) ? ae.id : "";
+    var selA = (focusId && typeof ae.selectionStart === "number") ? ae.selectionStart : null;
+    var selB = (focusId && typeof ae.selectionEnd === "number") ? ae.selectionEnd : null;
+    if(cur && cur.classList.contains("open") && !(d.id in OPENED)) OPENED[d.id] = true;
+    var node = caseBox(d, newest);
+    node.dataset.csig = csig;
+    if(cur) box.replaceChild(node, cur);
+    else box.insertBefore(node, anchor ? anchor.nextSibling : null);
+    if(focusId){
+      var nf = $(focusId);
+      if(nf && nf.focus){ nf.focus(); if(selA !== null && nf.setSelectionRange) try{ nf.setSelectionRange(selA, selB); }catch(x){} }
+    }
+    anchor = node;
+  });
+
+  Array.prototype.slice.call(box.children).forEach(function(ch){
+    if(!keep[ch.id]) box.removeChild(ch);
+  });
+
+  STICK = first || near;
+  if(STICK) box.scrollTop = box.scrollHeight;
+  else box.scrollTop = prevTop;
+  first = false;
+}
+
+// ── 대화 목록 · 대화방 · 새 문의 (2026-11-17) ─────────────────────────────────
+// 주소 뒤 #r/<문의번호> = 대화방, #new = 새 문의, 없음 = 대화 목록. 휴대폰 「뒤로」 단추가 목록으로 돌아간다.
+// 서버 쓰기는 그대로 세 가지뿐(신규 /api/new · 추가 질문 /api/followup · 종결 /api/close) — 화면만 바뀌었다.
+var VIEW = "list", ROOM = "", RFILT = "all", VKEY = "list", VDRAFT = {}, READ_K = LS + ".read";
+var WIDE = window.matchMedia("(min-width:1000px)");
+try{ WIDE.addEventListener("change", function(){ if(ME && VIEW === "list" && WIDE.matches) route(); }); }catch(e){}
+function readGet(){ try{ var s = JSON.parse(localStorage.getItem(READ_K) || "null"); if(s && s.who === ntfWho() && s.map) return s.map; }catch(e){} return null; }
+function readPut(map){ try{ localStorage.setItem(READ_K, JSON.stringify({who: ntfWho(), map: map})); }catch(e){} }
+function baselineRead(){                 // 처음 들어온 기기 — 지금 있는 답은 읽은 것으로 시작한다(옛 답에 배지가 쏟아지지 않게)
+  if(!ntfWho() || readGet() !== null) return;
+  var m = {}; ITEMS.forEach(function(d){ m[d.id] = d.rev; }); readPut(m);
+}
+function markRead(d){ var m = readGet(); if(m === null) m = {}; if(m[d.id] === d.rev) return; m[d.id] = d.rev; readPut(m); }
+function lastTurn(d){ var t = turnsOf(d); return t.length ? t[t.length - 1] : null; }
+function isUnread(d, m){ var t = lastTurn(d); return !!(m && t && t.role === "a" && m[d.id] !== d.rev); }
+function isDone(d){ return !!(d.closed || d.status === "완료"); }
+function plain(s){ return String(s || "").replace(tokenRe(), " [사진] ").split(NL).map(function(x){ return x.trim(); }).filter(Boolean).join(" "); }
+function cut(s, n){ var a = Array.from(s); return a.length > n ? a.slice(0, n).join("") + "…" : s; }
+function titleOf(d){ var t = turnsOf(d); return cut(plain(t.length ? t[0].text : d.q), 60) || d.id; }
+function lastLine(d){
+  var t = lastTurn(d); if(!t) return "";
+  if(t.role === "q") return "나: " + plain(t.text);
+  return (isBot(t.text) ? "트리니티봇: " : "담당자: ") + plain(headOf(t.text).body || t.text);
+}
+function whenOf(d){ var w = ""; turnsOf(d).forEach(function(t){ if(t.when) w = t.when; }); return w || d.date || ""; }
+function p2(n){ return (n < 10 ? "0" : "") + n; }
+function shortWhen(w){                    // 오늘이면 「13:06」, 아니면 「11/13」
+  var m = /^(\d{4})-(\d{2})-(\d{2})(?:\D+(\d{1,2}:\d{2}))?/.exec(w || ""); if(!m) return w || "";
+  var n = new Date();
+  if(m[1] + "-" + m[2] + "-" + m[3] === n.getFullYear() + "-" + p2(n.getMonth() + 1) + "-" + p2(n.getDate()) && m[4]) return m[4];
+  return Number(m[2]) + "/" + Number(m[3]);
+}
+function drawHead(){
+  var d = VIEW === "room" ? item(ROOM) : null, st = $("hst");
+  $("htitle").textContent = VIEW === "room" ? (d ? titleOf(d) : "보낸 문의") : VIEW === "new" ? "새 문의" : "SD 문의";
+  $("hsub").textContent = VIEW === "room" ? (ROOM + (d && d.type ? " · " + d.type : ""))
+    : VIEW === "new" ? "트리니티봇(AI)이 먼저 안내하고, 담당자가 확인해 답변드립니다"
+    : "담당자 확인 후 답변드립니다 · AI 가 먼저 안내한 답에는 표기가 붙습니다";
+  if(d){ st.hidden = false; st.className = "st st-" + (LABEL_CLS[d.label] || d.status); st.textContent = d.label || d.status; }
+  else st.hidden = true;
+}
+function drawRooms(){
+  var box = $("roomlist"), m = readGet(), all = ITEMS.slice().reverse();        // 서버 순서(최신 접수 먼저)를 기본으로
+  all.sort(function(a, b){ var x = whenOf(a), y = whenOf(b); return x < y ? 1 : x > y ? -1 : 0; });
+  var n = {all: all.length, "new": 0, open: 0, done: 0};
+  all.forEach(function(d){ if(isUnread(d, m)) n["new"]++; if(isDone(d)) n.done++; else n.open++; });
+  var names = {all: "전체", "new": "새 답", open: "진행 중", done: "종결"};
+  Array.prototype.forEach.call(document.querySelectorAll(".filt button"), function(b){
+    var f = b.getAttribute("data-f"); b.textContent = names[f] + (n[f] ? " " + n[f] : ""); b.setAttribute("aria-pressed", String(f === RFILT));
+  });
+  drawMeCard(n.open, n["new"]);
+  var rows = all.filter(function(d){
+    return RFILT === "all" || (RFILT === "new" && isUnread(d, m)) || (RFILT === "open" && !isDone(d)) || (RFILT === "done" && isDone(d));
+  });
+  box.textContent = "";
+  rows.forEach(function(d){
+    var un = isUnread(d, m), t = lastTurn(d), who = !t ? "me" : t.role === "q" ? "me" : isBot(t.text) ? "bot" : "human";
+    var cur = VIEW === "room" && d.id === ROOM;
+    var b = el("button", "room" + (un ? " unread" : "") + (cur ? " cur" : "")); b.type = "button";
+    if(cur) b.setAttribute("aria-current", "true");
+    b.setAttribute("aria-label", titleOf(d) + " · " + (d.label || d.status) + (un ? " · 새 답 있음" : ""));
+    b.appendChild(el("span", "face" + (who === "human" ? " human" : who === "me" ? " me" : ""), who === "bot" ? "원" : who === "human" ? "담" : "나"));
+    var mid = el("span", "mid"), l1 = el("span", "l1"), l2 = el("span", "l2");
+    l1.appendChild(el("span", "tt", titleOf(d))); l1.appendChild(el("span", "tm", shortWhen(whenOf(d))));
+    l2.appendChild(el("span", "st st-" + (LABEL_CLS[d.label] || d.status), d.label || d.status));
+    l2.appendChild(el("span", "lm", cut(lastLine(d), 80)));
+    if(un) l2.appendChild(el("span", "un", "새"));
+    mid.appendChild(l1); mid.appendChild(l2); b.appendChild(mid);
+    b.onclick = function(){ go("#r/" + encodeURIComponent(d.id)); };
+    box.appendChild(b);
+  });
+  if(!rows.length) box.appendChild(el("div", "rempty", SIG === null ? "불러오는 중…"
+    : ITEMS.length ? "이 조건에 맞는 문의가 없습니다." : "아직 남기신 문의가 없습니다. 위의 [새 문의]로 시작해 보세요."));
+  else box.appendChild(el("div", "rfoot", "종결된 문의도 여기 남습니다. 같은 일이 다시 생기면 그 대화방에서 이어서 물어보세요."));
+}
+Array.prototype.forEach.call(document.querySelectorAll(".filt button"), function(b){
+  b.onclick = function(){ RFILT = b.getAttribute("data-f"); drawRooms(); };
+});
+// 접속자 카드 — 누가 들어와 있는지 · 아직 안 끝난 문의 · 새 답을 목록 아래에 늘 보여 준다
+function drawMeCard(nOpen, nNew){
+  var box = $("mecard"); if(!box) return;
+  box.textContent = "";
+  if(!ME) return;
+  box.appendChild(el("span", "face", (ME.name || "?").charAt(0)));
+  var mi = el("div", "mi");
+  mi.appendChild(el("b", "", (ME.name || "") + " · " + (ME.org || "") + (ME.role ? " · " + ME.role : "")));
+  mi.appendChild(el("span", "emp", "사번 " + (EMP || ME.emp || "")));
+  var cnt = el("div", "cnt");
+  var bo = btn("미완료 문의 " + nOpen + "건", function(){ RFILT = "open"; if(VIEW !== "list" && !WIDE.matches) go(""); drawRooms(); }, nOpen ? "hot" : "");
+  bo.setAttribute("aria-label", "미완료 문의 " + nOpen + "건 — 진행 중만 보기");
+  cnt.appendChild(bo);
+  if(nNew){ var bn = btn("새 답 " + nNew + "건", function(){ RFILT = "new"; if(VIEW !== "list" && !WIDE.matches) go(""); drawRooms(); }, "hot"); cnt.appendChild(bn); }
+  mi.appendChild(cnt); box.appendChild(mi);
+  var acts = el("div", "acts");
+  acts.appendChild(btn("내 정보", function(){ $("mebtn").click(); }));
+  acts.appendChild(btn("로그아웃", function(){ $("logout").click(); }));
+  box.appendChild(acts);
+}
+function viewKey(){ return VIEW === "room" ? "r:" + ROOM : VIEW; }
+function stashDraft(){                    // 대화방을 오가도 쓰던 글(그림 포함)은 그 방에 남겨 둔다
+  if(VKEY === "list") return;
+  if(edBlankNow()) delete VDRAFT[VKEY]; else VDRAFT[VKEY] = qEd.innerHTML;
+}
+function loadDraft(){
+  qEd.innerHTML = VDRAFT[VKEY] || "";
+  try{ qEd.dispatchEvent(new Event("input")); }catch(e){}
+}
+function route(){
+  var h = location.hash || "";
+  stashDraft();
+  if(h.indexOf("#r/") === 0){ VIEW = "room"; ROOM = decodeURIComponent(h.slice(3)); }
+  else if(h === "#new"){ VIEW = "new"; ROOM = ""; }
+  else { VIEW = "list"; ROOM = ""; }
+  if(VIEW === "list" && WIDE.matches){ VIEW = "new"; try{ history.replaceState(null, "", "#new"); }catch(e){} }   // PC 는 목록이 늘 왼쪽에 있다
+  VKEY = viewKey();
+  var app = $("app");
+  app.classList.toggle("v-list", VIEW === "list"); app.classList.toggle("v-room", VIEW === "room"); app.classList.toggle("v-new", VIEW === "new");
+  if(VIEW !== "room") app.classList.remove("noask");
+  if(VIEW === "room") OPENED[ROOM] = true;
+  AUTO_TARGET = ""; $("similar").hidden = true;
+  var keepMsg = (VIEW === "room" && ROOM === PENDING_NEW) ? [$("cmsg").textContent, $("cmsg").className] : null;
+  if(VIEW !== "list") loadDraft();                                    // ⚠ input 이벤트가 「ok」 안내를 지운다 — 그래서 아래에서 되살린다
+  if(keepMsg){ $("cmsg").textContent = keepMsg[0]; $("cmsg").className = keepMsg[1]; }   // 방금 보낸 새 문의의 「등록되었습니다」 안내는 남긴다
+  else say("");
+  first = true; drawHead();
+  if(!ME) return;
+  render();
+  if(VIEW === "new") qEd.focus();
+  else if(VIEW === "list"){ var r = $("roomlist").querySelector(".room"); if(r && document.activeElement === document.body) r.focus({preventScroll: true}); }
+}
+function go(h){ if((location.hash || "") === h) route(); else if(h) location.hash = h; else history.pushState("", document.title, location.pathname + location.search), route(); }
+window.addEventListener("hashchange", route);
+window.addEventListener("popstate", function(){ if(!location.hash) route(); });
+$("backbtn").onclick = function(){ go(""); };
+$("newbtn").onclick = function(){ go("#new"); };
+
+// 새 문의를 쓰는 동안 — 내가 전에 받은 답 가운데 비슷한 것을 먼저 보여 준다(남의 문의 · 내부 문서는 보이지 않는다)
+var SIM = {timer: 0, last: ""};
+function grams(s){
+  var out = {}, words = String(s || "").toUpperCase().match(/[0-9A-Z_]{2,}|[가-힣]{2,}/g) || [];
+  words.forEach(function(w){
+    if(/[가-힣]/.test(w)) for(var i = 0; i < w.length - 1; i++) out[w.substr(i, 2)] = 1;
+    else out[w] = 1;
+  });
+  return out;
+}
+function simScore(a, b){
+  var ka = Object.keys(a), kb = Object.keys(b), hit = 0;
+  if(ka.length < 2 || !kb.length) return 0;
+  ka.forEach(function(k){ if(b[k]) hit++; });
+  return hit < 2 ? 0 : hit / Math.sqrt(ka.length * kb.length);
+}
+function drawSimilar(){
+  var box = $("similar");
+  if(VIEW !== "new"){ box.hidden = true; return; }
+  var text = edSerialize(qEd).text;
+  if(text === SIM.last) return;
+  SIM.last = text;
+  var q = grams(text), hits = [];
+  ITEMS.forEach(function(d){
+    if(!d.a && !turnsOf(d).some(function(t){ return t.role === "a"; })) return;    // 답이 있는 것만
+    // 질문 한 개씩 비교해 가장 높은 점수 — 추가 질문을 모두 합치면 글이 길어져 점수가 묽어진다(2026-11-17 운영 실데이터: 0.21 → 0.47)
+    var s = 0;
+    turnsOf(d).forEach(function(t){ if(t.role === "q") s = Math.max(s, simScore(q, grams(t.text))); });
+    if(s >= 0.35) hits.push({d: d, s: s});        // 0.2 는 「화면에서」 같은 흔한 말만 겹쳐도 걸렸다(2026-11-17 시험)
+  });
+  hits.sort(function(a, b){ return b.s - a.s; });
+  box.textContent = "";
+  if(!hits.length){ box.hidden = true; return; }
+  box.appendChild(el("h2", "", "전에 받으신 비슷한 답이 있습니다"));
+  box.appendChild(el("p", "", "이걸로 해결되면 새로 보내지 않으셔도 됩니다. 누르면 그 대화방에서 이어서 물어볼 수 있습니다."));
+  hits.slice(0, 3).forEach(function(h){
+    var b = el("button", "sim"); b.type = "button";
+    b.appendChild(el("b", "", titleOf(h.d)));
+    b.appendChild(el("span", "", cut(lastLine(h.d), 90)));
+    b.onclick = function(){ go("#r/" + encodeURIComponent(h.d.id)); };
+    box.appendChild(b);
+  });
+  box.hidden = false;
+}
+qEd.addEventListener("input", function(){ clearTimeout(SIM.timer); SIM.timer = setTimeout(drawSimilar, 400); });
+
+// ── 쓰는 칸의 대상: 새 문의 / 어느 문의에 추가 질문 ────────────────────────────
+function setTarget(id, focus, quiet){
+  TARGET = id || "";
+  var d = TARGET ? item(TARGET) : null, left = d ? Math.max(0, Number(d.shot_left || 0)) : SHOT_MAX;
+  var proc = !!(TARGET && (!d ? PENDING_NEW === TARGET : isBotProcessing(d)));
+  $("type").hidden = !!TARGET; $("targetx").hidden = !TARGET;
+  $("target").classList.toggle("proc", proc);
+  $("targettxt").textContent = "";
+  if(TARGET){
+    $("targettxt").appendChild(el("b", "", "↪ " + TARGET));
+    var suffix = (proc ? " (트리니티봇 확인 중 · 지금 보내면 바로 함께 참고)" : " 문의에 추가 질문")
+      + " · " + (left ? "사진 " + left + "장 더 넣을 수 있음" : "이 문의에는 사진을 더 넣을 수 없습니다");
+    $("targettxt").appendChild(document.createTextNode(suffix));
+    qEd.setAttribute("data-left", String(left));
+  } else {
+    $("targettxt").appendChild(el("b", "", "새 문의"));
+    $("targettxt").appendChild(document.createTextNode(" · 유형 "));
+    qEd.removeAttribute("data-left");
+  }
+  $("send").textContent = proc ? "지금 보내기" : "보내기";
+  qEd.setAttribute("data-ph", TARGET ? (proc ? PH_PROC : PH_ASK) : PH_NEW);
+  $("pick").disabled = !!TARGET && !left;
+  if(focus) qEd.focus();
+  if(!quiet && SIG !== null) render();
+}
+$("targetx").onclick = function(){
+  var d = item(TARGET); if(TARGET) DISMISS[TARGET + "|" + (d ? d.rev : "")] = 1;
+  AUTO_TARGET = ""; PENDING_NEW = "";
+  setTarget("", true);
+};
+
+// ── 보내기 — 글과 그림을 한 번에 (새 문의 /api/new · 추가 질문 /api/followup) ─────────────
+async function send(){
+  if(busy || !ME) return;
+  var s = edSerialize(qEd), id = TARGET, lim = edLeft(qEd);
+  if(!s.text){ say(id ? "내용을 입력해 주세요." : "문의 내용을 입력해 주세요.", "err"); qEd.focus(); return; }
+  if(s.text.length > MAX_TEXT){ say((id ? "너무 깁니다 (" : "문의 내용이 너무 깁니다 (") + s.text.length + "자 / " + MAX_TEXT + "자). 나눠서 남겨 주세요.", "err"); return; }
+  if(s.files.length > lim){ say(id ? "이 문의에는 사진을 " + lim + "장까지만 더 넣으실 수 있습니다." : "사진은 한 문의에 " + SHOT_MAX + "장까지 넣으실 수 있습니다.", "err"); return; }
+  busy = true; $("send").disabled = true;
+  say(s.files.length ? ("사진 " + s.files.length + "장과 함께 보내는 중…") : "보내는 중…");
+  var rid = mkReqId();
+  try{
+    var shots = await packShots(s.files);
+    // 성함 · 소속 · 담당 업무는 보내지 않는다 — 서버가 로그인한 사번의 프로파일로 채운다
+    var j = await api(id ? "/api/followup" : "/api/new", id ? {id: id, text: s.text, shots: shots, req_id: rid}
+                                                          : {type: val("type"), q: s.text, shots: shots, req_id: rid});
+    if(j.ok){
+      var wasProc = id ? isBotProcessing(item(id)) : true;
+      edClear(qEd);
+      if(id){
+        say(wasProc ? "지금 보냈습니다 — 트리니티봇이 방금 보낸 내용까지 함께 참고하여 답변합니다." : "추가되었습니다.", "ok");
+      } else {
+        say("등록되었습니다 — 문의번호 " + j.id + (j.shots ? " · 사진 " + j.shots + "장이 글과 함께 들어갔습니다" : "")
+            + ". 트리니티봇이 확인을 시작합니다 — 빠뜨린 내용이나 화면이 있으면 아래 칸에 이어서 지금 바로 보내세요." + (j.warn ? " ⚠ " + j.warn : ""), j.warn ? "err" : "ok");
+        $("type").selectedIndex = 0;
+        PENDING_NEW = j.id;
+      }
+      OPENED[j.id] = true; first = true;              // 방금 보낸 건은 펴고, 맨 아래로
+      AUTO_TARGET = j.id;
+      setTarget(j.id, false, true);
+      if(!id){ delete VDRAFT["new"]; go("#r/" + encodeURIComponent(j.id)); }   // 새 문의 → 그 대화방으로
+      setTimeout(loadMine, 700);
+    } else say(j.error || (id ? "추가하지 못했습니다." : "등록하지 못했습니다."), "err");
+  }catch(e){ try{ console.error("보내기 실패", e); }catch(x){} say(sendErrMsg(e), "err"); }
+  busy = false; $("send").disabled = false; qEd.focus();
+}
+$("send").onclick = send;
+qEd.addEventListener("keydown", function(e){        // 보낸 글은 지울 수 없다 — Enter 는 줄바꿈, Ctrl+Enter 가 보내기
+  if(e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); send(); }
+});
+qEd.addEventListener("input", function(){ if($("cmsg").className.indexOf("ok") >= 0) say(""); });
+
+async function sendClose(id){
+  if(SENDING["c" + id]) return;                      // 이미 닫는 중 — 두 번 보내지 않는다
+  var st = CFORM[id] || {score: "5", fb: ""}, score = parseInt(st.score, 10) || 5, feedback = (st.fb || "").trim();
+  if(!confirm("이 문의를 " + score + "점으로 종결하시겠습니까? 닫은 뒤에도 추가 질문을 남기시면 다시 열립니다.")) return;
+  SENDING["c" + id] = 1;
+  var b = document.querySelector("[data-close='" + id + "']"), msg = $("cm-" + id);
+  if(b) b.disabled = true;
+  if(msg){ msg.className = "askmsg"; msg.textContent = "종결 처리 중…"; }
+  var ok = false, err = "";
+  try{
+    var j = await api("/api/close", {id: id, score: score, feedback: feedback});
+    ok = !!j.ok; err = j.error || "";
+  }catch(e){ try{ console.error("케이스 닫기 실패", e); }catch(x){} err = sendErrMsg(e); }
+  delete SENDING["c" + id];
+  if(ok){ delete CFORM[id]; if(TARGET === id) setTarget("", false, true); loadMine(); return; }
+  var b2 = document.querySelector("[data-close='" + id + "']"), m2 = $("cm-" + id);
+  if(b2) b2.disabled = false;
+  if(m2){ m2.className = "askmsg err"; m2.textContent = err || "닫지 못했습니다."; }
+}
+
+// ── 새 답변 확인 · 알림 (운영 화면과 같은 규칙) ──────────────────────────────
+// 대화창은 알림을 꺼 두어도 5초마다 /api/pulse 로 「내 건의 마지막 답 지문」을 받아, 달라졌으면 목록을 새로 그린다.
+// 팝업·탭 제목 표시는 [알림 켜기]를 눌렀을 때만. 권한도 그 단추를 눌렀을 때만 묻는다.
+var NTF_K = LS + ".ntf", SEEN_K = LS + ".seen";
+var NTF = {mem: "", seen: null, jump: "", n: 0, title: document.title};
+var PULSE = {busy: false, timer: 0, ms: 5000};
+function ntfOn(){ try{ var v = localStorage.getItem(NTF_K); if(v !== null) return v === "on"; }catch(e){} return NTF.mem === "on"; }
+function ntfPref(on){ NTF.mem = on ? "on" : "off"; try{ localStorage.setItem(NTF_K, NTF.mem); }catch(e){} }
+function seenGet(){ try{ var s = JSON.parse(localStorage.getItem(SEEN_K) || "null"); if(s && s.map) return s; }catch(e){} return NTF.seen; }
+function seenPut(who, map){ var s = {who: who, map: map}; NTF.seen = s; try{ localStorage.setItem(SEEN_K, JSON.stringify(s)); }catch(e){} }
+function ntfWho(){ return (ME && EMP) ? ("emp|" + EMP) : ""; }
+function ntfCan(){ return !!window.isSecureContext && ("Notification" in window); }
+function ntfMode(){ if(!ntfOn()) return "off"; return (ntfCan() && Notification.permission === "granted") ? "popup" : "title"; }
+function ntfDraw(show){
+  var mode = ntfMode(), t;
+  $("ntfbtn").textContent = mode === "off" ? "알림 켜기" : "알림 끄기";
+  $("ntfbtn").setAttribute("aria-pressed", mode === "off" ? "false" : "true");
+  if(mode === "off") t = "새 답변이 등록되면 알려 드립니다. 단, 이 화면(탭)이 열려 있는 동안에만 확인하며, 화면을 닫으면 알림이 가지 않습니다.";
+  else if(mode === "popup") t = "알림 켜짐 — 새 답변이 등록되면 PC 알림으로 알려 드립니다. 이 화면(탭)이 열려 있는 동안에만 동작하며, 닫으면 알림이 가지 않습니다.";
+  else if(!window.isSecureContext) t = "알림 켜짐(탭 제목 표시) — 이 접속 주소(http)에서는 브라우저가 팝업 알림을 허용하지 않아, 새 답변이 오면 탭 제목에 (1) 로 표시합니다. 이 화면이 열려 있는 동안에만 동작합니다.";
+  else if(!("Notification" in window)) t = "알림 켜짐(탭 제목 표시) — 이 브라우저는 팝업 알림을 지원하지 않아 새 답변이 오면 탭 제목에 (1) 로 표시합니다. 이 화면이 열려 있는 동안에만 동작합니다.";
+  else t = "알림 켜짐(탭 제목 표시) — 브라우저에서 이 사이트의 알림이 차단되어 있어 탭 제목에 (1) 로 표시합니다. 주소창 왼쪽 아이콘에서 알림을 허용하면 팝업으로 바뀝니다. 이 화면이 열려 있는 동안에만 동작합니다.";
+  $("ntfmsg").textContent = t;
+  if(show) $("strip").hidden = false;
+}
+$("stripx").onclick = function(){ $("strip").hidden = true; };
+function ntfTitle(n){ NTF.n = n; document.title = n ? ("(" + n + ") 새 답변 · " + NTF.title) : NTF.title; }
+function ntfAway(){ return document.hidden || !document.hasFocus(); }
+document.addEventListener("visibilitychange", function(){ if(!document.hidden){ ntfTitle(0); pulse(); } });
+window.addEventListener("focus", function(){ ntfTitle(0); pulse(); });
+function ntfGoto(id){ NTF.jump = id; OPENED[id] = true; SIG = null; go("#r/" + encodeURIComponent(id)); loadMine(); }
+function ntfJump(){
+  var id = NTF.jump; if(!id) return;
+  var e = $("it-" + id); if(!e) return;
+  NTF.jump = ""; e.classList.add("open");
+  try{ e.scrollIntoView({block: "center"}); }catch(x){}
+}
+function ntfPopup(title, body, tag, id){
+  if(ntfMode() !== "popup") return false;
+  try{
+    var n = new Notification(title, {body: body, tag: tag});
+    n.onclick = function(){ try{ window.focus(); }catch(e){} try{ n.close(); }catch(e){} if(id) ntfGoto(id); };
+    return true;
+  }catch(e){ return false; }
+}
+function ntfMark(items){               // 목록을 그린 뒤 — 지금 화면에 보인 답은 「본 것」으로 기록한다
+  if(!ntfOn()) return;
+  var who = ntfWho(); if(!who) return;
+  var map = {}; items.forEach(function(d){ map[d.id] = d.rev; });
+  seenPut(who, map); ntfTitle(0);
+}
+function ntfHandle(who, items){
+  var s = seenGet(), map = {}, fresh = [];
+  if(!s || s.who !== who){             // 처음이거나 다른 사람 — 지금 있는 답은 기준으로만 삼고 알리지 않는다
+    items.forEach(function(d){ map[d.id] = d.rev; }); seenPut(who, map); return;
+  }
+  map = s.map || {};
+  items.forEach(function(d){ if(d.fresh && map[d.id] !== d.rev) fresh.push(d); });
+  if(!fresh.length) return;
+  fresh.forEach(function(d){ map[d.id] = d.rev; });
+  seenPut(who, map);
+  fresh.slice(0, 5).forEach(function(d){
+    ntfPopup(d.id + " · 새 답변", d.line || "답변이 등록되었습니다. 대화창에서 확인해 주세요.", d.id + "|" + d.rev, d.id);
+  });
+  if(ntfAway()) ntfTitle(NTF.n + fresh.length);
+}
+async function pulse(){
+  var who = ntfWho();
+  if(PULSE.busy || !who) return;
+  PULSE.busy = true;
+  try{
+    var j = await api("/api/pulse");
+    if(j && j.ok && ME && ntfWho() === who){
+      var items = j.items || [];
+      var changed = items.length !== ITEMS.length || items.some(function(d){ return REVS[d.id] !== d.rev; });
+      if(ntfOn()) ntfHandle(who, items);
+      if(changed) loadMine();                         // 화면 목록도 최신으로
+    }
+  }catch(e){}
+  PULSE.busy = false;
+}
+function pulseSchedule(){
+  clearTimeout(PULSE.timer);
+  if(!ME) return;
+  PULSE.timer = setTimeout(async function(){
+    if(ME && Date.now() - LAST_ACT > IDLE_MS && edBlankNow()){
+      try{ await postJ("/api/logout", {}); }catch(e){}
+      gateShow("30분 이상 사용이 없어 안전하게 로그아웃되었습니다.");
+      return;
+    }
+    await pulse();
+    pulseSchedule();
+  }, PULSE.ms + Math.floor(Math.random() * 1000));
+}
+$("ntfbtn").onclick = async function(){
+  if(ntfOn()){ ntfPref(false); ntfTitle(0); ntfDraw(true); return; }
+  ntfPref(true);
+  if(ntfCan() && Notification.permission === "default"){      // 권한은 이 단추를 눌렀을 때만 묻는다
+    try{ await new Promise(function(res){ var p = Notification.requestPermission(res); if(p && p.then) p.then(res, res); }); }catch(e){}
+  }
+  ntfDraw(true);
+  ntfPopup("알림이 켜졌습니다", "새 답변이 등록되면 이렇게 알려 드립니다. (이 화면이 열려 있는 동안)", "sd-ntf-test", "");
+  ntfMark(ITEMS);                                             // 지금 보이는 답을 기준(본 것)으로 삼는다
+  pulse();
+};
+
+// ── 이용 안내 ──────────────────────────────────────────────────────────
+var helpFrom = null;
+$("helpbtn").onclick = function(){ helpFrom = document.activeElement; $("help").hidden = false; $("helpx").focus(); };
+function helpClose(){ $("help").hidden = true; if(helpFrom && helpFrom.focus) helpFrom.focus(); }
+$("helpx").onclick = helpClose;
+$("help").addEventListener("click", function(e){ if(e.target === $("help")) helpClose(); });
+document.addEventListener("keydown", function(e){
+  if(e.key !== "Escape") return;
+  if(!$("help").hidden) helpClose(); else if(!$("prof").hidden) profClose();
+});
+
+// 기억한 사번 또는 유효한 쿠키 세션이 있으면 바로 들어간다
+(async function(){
+  EMP = empGet();
+  try{
+    var meRes = await fetch("/api/me", {cache: "no-store", credentials: "same-origin", headers: {"X-Requested-With": "SDChat"}});
+    var mj = await readJson(meRes);
+    if(mj && mj.ok && mj.profile){
+      EMP = mj.profile.emp || EMP;
+      if(EMP){ set("emp", EMP); empPut(EMP); }
+      start(mj.profile);
+      return;
+    }
+  }catch(e){}
+  if(!EMP){ $("emp").focus(); return; }
+  set("emp", EMP);
+  var j = null;
+  try{ j = await postJ("/api/login", {emp: EMP}); }catch(e){ gerr("서버에 연결하지 못했습니다. 잠시 뒤 [들어가기]를 눌러 주세요."); $("emp").focus(); return; }
+  if(j && j.ok){ TOK = j.tok; start(j.profile); return; }
+  if(j && j.signup){ signupMode(true); prefill(); gerr("이 사번은 아직 등록돼 있지 않습니다."); $("name").focus(); return; }
+  if(j && j.need_pin){ pinMode(true); gerr("이 사번은 PIN 이 설정되어 있습니다. PIN 을 입력해 주세요."); $("pin").focus(); return; }
+  gerr((j && j.error) || ""); $("emp").focus();
+})();
+</script>
+</body></html>

@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="ko" data-saved="sv-mtwjxgtr-4l8lk"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SD 운영 Task 대시보드</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+         background:#f1f5f9; color:#1e293b; }
+  header { background:#1a2744; color:#fff; padding:16px 22px; }
+  /* 2026-09-11 사용자 요청: 머리말 · 분류 줄 · 수정→저장 줄까지는 스크롤해도 위에 고정 */
+  .stickytop { position:sticky; top:0; z-index:40; box-shadow:0 2px 8px rgba(15,23,42,.10); }
+  header h1 { margin:0; font-size:18px; }
+  header .sub { font-size:12px; opacity:.8; margin-top:4px; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; padding:12px 22px; background:#fff;
+            border-bottom:1px solid #e2e8f0; font-size:12px; align-items:center; }
+  .chip { display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .dev { background:#2563eb; } .ops { background:#16a34a; }
+  .ts { background:#ea580c; } .adm { background:#94a3b8; }
+  .personal { background:#9333ea; }
+  .board { display:flex; gap:14px; padding:18px 22px; overflow-x:auto; align-items:flex-start; }
+  .col { background:#e9eef5; border-radius:10px; min-width:270px; flex:1; padding:10px; }
+  .col h2 { font-size:13px; margin:4px 6px 10px; display:flex; justify-content:space-between; }
+  .col h2 .cnt { background:#1a2744; color:#fff; border-radius:12px; padding:0 8px; font-size:11px; }
+  #board .col-cards.scroll { max-height:540px; overflow-y:auto; padding-right:4px; }   /* 완료 컬럼만 높이 고정·스크롤 */
+  .card { background:#fff; border-radius:8px; padding:10px 12px; margin-bottom:10px;
+          border-left:5px solid #cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card .head { cursor:pointer; }
+  .card .detail { cursor:auto; user-select:text; }
+  .card.dev { border-left-color:#2563eb; }
+  .card.ops { border-left-color:#16a34a; }
+  .card.ts  { border-left-color:#ea580c; }
+  .card.personal { border-left-color:#9333ea; }
+  .card .id { font-size:11px; font-weight:700; letter-spacing:.3px; white-space:nowrap; }
+  .card.dev .id { color:#2563eb; } .card.ops .id { color:#16a34a; }
+  .card.personal .id { color:#9333ea; }
+  .card .id-wrap { display:flex; flex-wrap:wrap; align-items:center; gap:5px; min-width:0; }
+  .card .t-req { font-size:10.5px; font-weight:700; color:#3730a3; background:#eef2ff;
+                 border:1px solid #c7d2fe; border-radius:5px; padding:0 6px; line-height:1.55; }
+  .card .title { font-size:13px; font-weight:600; margin:3px 0 6px; line-height:1.4; }
+  .card .meta { font-size:11px; color:#64748b; line-height:1.6; }
+  .card .next { margin-top:6px; font-size:11px; background:#fef9c3; color:#854d0e;
+                border-radius:5px; padding:4px 7px; }
+  .card .warn { background:#fee2e2; color:#991b1b; }
+  .detail { display:none; margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1;
+            font-size:12px; line-height:1.7; white-space:pre-wrap; }
+  .card.open .detail { display:block; }
+  /* ── 🤖 AI 참조 로그 (접힘) — 사람은 본문까지만, AI는 여기까지 정독 ── */
+  .detail details.ailog { margin-top:10px; border-top:1px dashed #cbd5e1; padding-top:7px; white-space:normal; }
+  .detail details.ailog summary { cursor:pointer; font-size:11px; font-weight:700; color:#64748b; user-select:none; }
+  .detail details.ailog summary:hover { color:#334155; }
+  .detail details.ailog summary .sub { font-weight:400; color:#94a3b8; }
+  .detail details.ailog .ailog-body { margin-top:6px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:7px;
+        padding:8px 10px; font-size:11.5px; line-height:1.65; color:#475569; max-height:420px; overflow:auto; white-space:pre-wrap; }
+  .hint { text-align:center; font-size:11px; color:#94a3b8; padding:0 0 18px; }
+  a { color:#2563eb; }
+  /* ── 카드 편집 기능 ── */
+  .card .head .row1 { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; }
+  .card .head .row1 .editbtn { flex:0 0 auto; }
+  .editbtn { font-size:10px; border:1px solid #cbd5e1; background:#f8fafc; color:#475569;
+             border-radius:5px; padding:1px 7px; cursor:pointer; line-height:1.6; flex:none; }
+  .editbtn:hover { background:#e2e8f0; }
+  .card.edited, .inq-card.edited { box-shadow:0 0 0 2px #f59e0b inset, 0 1px 3px rgba(0,0,0,.08); }
+  .inq-card-top .editbtn { flex:0 0 auto; }
+  .editform label { display:block; font-size:11px; color:#475569; margin:7px 0 0; font-weight:600; }
+  .editform input, .editform select, .editform textarea {
+        width:100%; font-size:12px; padding:5px 6px; border:1px solid #cbd5e1;
+        border-radius:5px; font-family:inherit; margin-top:3px; }
+  .editform textarea { resize:vertical; line-height:1.6; white-space:pre; }
+  .editform .codes { display:flex; flex-wrap:wrap; gap:2px 12px; margin-top:7px; }
+  .editform .codes .codes-t { width:100%; font-size:11px; color:#475569; font-weight:600; }
+  .editform .codes label.codechk { display:inline-flex; align-items:center; gap:3px; margin:0; font-weight:500; cursor:pointer; }
+  .editform .codes label.codechk input { width:auto; margin:0; padding:0; }
+  .ebtns { display:flex; gap:6px; margin-top:10px; }
+  .ebtns button { font-size:12px; padding:5px 11px; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer; }
+  .ebtns .save { background:#2563eb; color:#fff; border-color:#2563eb; font-weight:600; }
+  .ebtns .cancel { background:#fff; }
+  .ebtns .revert { background:#fff; color:#b45309; border-color:#fdba74; margin-left:auto; }
+  .editbar { padding:8px 22px; background:#fff7ed; border-bottom:1px solid #fed7aa;
+             font-size:12px; color:#9a3412; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .editbar button { font-size:11px; padding:3px 9px; border-radius:5px; border:1px solid #fdba74;
+                    background:#fff; color:#9a3412; cursor:pointer; }
+  .editbar button:disabled { opacity:.45; cursor:default; }
+  .editbar .warn-txt { color:#b91c1c; }
+  .ovl { position:fixed; inset:0; background:rgba(15,23,42,.55); display:flex; align-items:center;
+         justify-content:center; z-index:50; padding:20px; }
+  .ovl .box { background:#fff; border-radius:10px; padding:16px; width:min(680px,100%); max-height:86vh;
+              display:flex; flex-direction:column; gap:10px; }
+  .ovl .box h3 { margin:0; font-size:14px; }
+  .ovl textarea { flex:1; min-height:300px; font-family:ui-monospace,Consolas,monospace; font-size:12px;
+                  border:1px solid #cbd5e1; border-radius:6px; padding:8px; white-space:pre; }
+  /* ── 정기업무(주/월/연) 보드 ── */
+  .sec-title { padding:14px 22px 0; font-size:13px; font-weight:700; color:#334155; }
+  .sec-title small { font-weight:400; color:#94a3b8; font-size:11px; margin-left:6px; }
+  .board.recur .col { background:#eef2ff; }
+  .board.recur .col h2 .cnt { background:#4338ca; }
+  .cadence { display:inline-block; font-size:10px; font-weight:700; border-radius:4px;
+             padding:0 5px; margin-left:6px; vertical-align:middle; }
+  .cadence.wk { background:#dbeafe; color:#1e40af; }
+  .cadence.mo { background:#dcfce7; color:#166534; }
+  .cadence.yr { background:#fef3c7; color:#92400e; }
+  /* ── 일반·단순 문의 패널 ── */
+  .inq-panel { margin:0 22px 16px; background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; }
+  .inq-note { font-size:12px; color:#3730a3; line-height:1.7; background:#eef2ff; border:1px solid #c7d2fe;
+              border-radius:8px; padding:8px 10px; margin-bottom:10px; }
+  .inq-panel table { width:100%; border-collapse:collapse; font-size:12px; }
+  .inq-panel th, .inq-panel td { border:1px solid #e2e8f0; padding:6px 9px; text-align:left; vertical-align:top; line-height:1.6; }
+  .inq-panel th { background:#f1f5f9; font-weight:700; color:#334155; }
+  .inq-panel td a { color:#4338ca; text-decoration:none; font-weight:600; }
+  .inq-panel td a:hover { text-decoration:underline; }
+  .inq-foot { font-size:11px; color:#94a3b8; margin-top:8px; }
+  /* ── 문의 처리 이력 보드 (접수/진행중/대기/완료) ── */
+  #inqboard .col-cards { display:flex; flex-direction:column; gap:8px; }
+  #inqboard .col-cards.scroll { max-height:720px; overflow-y:auto; padding-right:4px; }   /* 2026-09-11 사용자 요청: 360→720 (두 배) */
+  .inq-card { background:#fff; border:1px solid #e2e8f0; border-left:4px solid #cbd5e1;
+              border-radius:7px; padding:7px 9px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .inq-card.urg  { border-left-color:#dc2626; }
+  .inq-card.gen  { border-left-color:#2563eb; }
+  .inq-card.simp { border-left-color:#16a34a; }
+  .inq-card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:6px; margin-bottom:3px; }
+  .inq-type { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; flex:0 0 auto; white-space:nowrap; }
+  .inq-type.urg  { background:#fee2e2; color:#991b1b; }
+  .inq-type.gen  { background:#dbeafe; color:#1e40af; }
+  .inq-type.simp { background:#dcfce7; color:#166534; }
+  .inq-date { font-size:10px; color:#94a3b8; }
+  .inq-q { font-size:12px; font-weight:600; color:#1e293b; line-height:1.45; }
+  .inq-a { font-size:11px; color:#475569; margin-top:3px; line-height:1.5; }
+  .inq-ref { margin-top:3px; } .inq-ref a { font-size:11px; color:#4338ca; text-decoration:none; }
+  .inq-ref a:hover { text-decoration:underline; }
+  .inq-empty { font-size:11px; color:#cbd5e1; text-align:center; padding:8px; }
+  .inq-code { font-size:12px; font-weight:700; color:#1e293b; letter-spacing:.2px;
+              font-family:ui-monospace,Consolas,monospace; }
+  .inq-code-wrap { display:flex; flex-wrap:wrap; align-items:center; gap:5px; min-width:0; }
+  /* 🤖 트리니티봇 답 판정 배지 — 검증 장부(vacation/ledger.py)가 이 값을 모은다(2026-09-11) */
+  .inq-grade { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; white-space:nowrap; background:#f1f5f9; color:#64748b; }
+  .inq-grade.g-ok { background:#dcfce7; color:#166534; }
+  .inq-grade.g-part { background:#fef3c7; color:#92400e; }
+  .inq-grade.g-bad { background:#fee2e2; color:#991b1b; }
+  /* 🌐 접수페이지(사내망 창구)로 들어온 문의 — 번호는 그대로, 출처(by=웹접수)로 가른다(2026-09-11) */
+  .inq-src { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; white-space:nowrap; background:#e0f2fe; color:#075985; }
+  .inq-req { font-size:11px; font-weight:700; color:#3730a3; background:#eef2ff;
+             border:1px solid #c7d2fe; border-radius:5px; padding:1px 7px; white-space:nowrap; }
+  .inq-foot-line { font-size:10px; color:#94a3b8; margin-top:5px; padding-top:4px;
+                   border-top:1px dashed #eef2f7; }
+  /* ── 문의 카드 접기/펴기 + 노란 요약 (프로젝트 카드와 동일 UX) ── */
+  .inq-card .inq-head { cursor:pointer; }
+  .inq-cy { display:inline-block; color:#94a3b8; font-size:9px; transition:transform .15s; flex:0 0 auto; }
+  .inq-card.open .inq-cy { transform:rotate(90deg); }
+  .inq-sum { font-size:12px; font-weight:600; background:#fef9c3; color:#854d0e;
+             border-radius:5px; padding:4px 7px; margin-top:4px; line-height:1.45; }
+  .inq-detail { display:none; margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0; }
+  .inq-card.open .inq-detail { display:block; }
+  .fv-grid .inq-card .inq-detail { display:block; }
+  .fv-grid .inq-card .inq-head { cursor:default; }
+  /* ── 완료 전체보기 버튼 + 큰화면 모달 ── */
+  .col h2 .h2-right { display:inline-flex; align-items:center; gap:6px; }
+  .viewall-btn { font-size:10px; font-weight:700; border:1px solid #94a3b8; background:#fff;
+                 color:#334155; border-radius:5px; padding:1px 8px; cursor:pointer; line-height:1.65; white-space:nowrap; }
+  .viewall-btn:hover { background:#1a2744; color:#fff; border-color:#1a2744; }
+  .fv-ovl { position:fixed; inset:0; background:rgba(15,23,42,.6); display:flex; align-items:center;
+            justify-content:center; z-index:60; padding:24px; }
+  .fv-box { background:#f1f5f9; border-radius:12px; width:min(1320px,97vw); max-height:92vh;
+            display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .fv-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+             padding:13px 18px; background:#1a2744; color:#fff; border-radius:12px 12px 0 0; flex:0 0 auto; }
+  .fv-head h3 { margin:0; font-size:15px; }
+  .fv-close { background:rgba(255,255,255,.16); border:none; color:#fff; font-size:16px; font-weight:700;
+              width:30px; height:30px; border-radius:7px; cursor:pointer; line-height:1; }
+  .fv-close:hover { background:rgba(255,255,255,.32); }
+  .fv-grid { overflow-y:auto; padding:18px; display:grid; gap:12px; align-items:start;
+             grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); }
+  .fv-grid .card { margin-bottom:0; }
+  .fv-grid .card .detail { display:block; max-height:340px; overflow:auto; }
+  .fv-grid .card .head { cursor:default; }
+  .fv-grid .editbtn { display:none; }
+</style>
+<style id="oc-console">
+/* Ops Console 공통 색 이름 · 위쪽 메뉴 (정본 templates/ops-console.md, 2026-11-17) */
+:root{--oc-bg:#eef1f5;--oc-panel:#f4f6f9;--oc-card:#ffffff;--oc-ink:#18212c;--oc-sub:#5d6978;--oc-line:#d9dfe6;
+  --oc-pt:#1a6fb5;--oc-pt-ink:#ffffff;--oc-chip:#eef1f5;--oc-warn-bg:#fff4dc;--oc-warn-ink:#7a5200;
+  --oc-good:#1f7a33;--oc-good-bg:#e8f6ea;--oc-bad:#b3261e;--oc-bad-bg:#fdecea;--oc-nav:#18212c;--oc-nav-ink:#e7ecf2;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--oc-bg:#0f141a;--oc-panel:#151b23;--oc-card:#1c242e;--oc-ink:#e7ecf2;--oc-sub:#9aa7b6;--oc-line:#2b3542;
+  --oc-pt:#5b9fe0;--oc-pt-ink:#0b1220;--oc-chip:#232d39;--oc-warn-bg:#3a2e12;--oc-warn-ink:#f3d58a;
+  --oc-good:#6fd19c;--oc-good-bg:#17291f;--oc-bad:#ff8a80;--oc-bad-bg:#3a1d1b;--oc-nav:#0b1016;--oc-nav-ink:#e7ecf2;color-scheme:dark}}
+.oc-nav{display:flex;align-items:center;gap:2px;height:44px;padding:0 10px;background:var(--oc-nav);color:var(--oc-nav-ink);
+  font:13px/1 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;overflow-x:auto;scrollbar-width:none;position:relative;z-index:500}
+.oc-nav b{margin:0 10px 0 4px;white-space:nowrap;font-size:13.5px}
+.oc-nav a{color:inherit;text-decoration:none;padding:8px 10px;border-radius:8px;white-space:nowrap;opacity:.78}
+.oc-nav a:hover{opacity:1;background:rgba(255,255,255,.08)}
+.oc-nav a[aria-current="page"]{opacity:1;font-weight:700;background:rgba(255,255,255,.16)}
+.oc-nav a:focus-visible{outline:2px solid #5b9fe0;outline-offset:-2px;opacity:1}
+</style>
+<style id="oc-ui-base">
+/* SD 화면 공통 기반 (2026-11-17) — 키보드 포커스 표시 · 작은 글씨 하한 11px · 연회색 글씨 대비 보정 · 휴대폰에서 칸을 세로로 쌓기.
+   다크 모드는 보류(카드 · 문의 본문의 직접 지정 색). 💾저장은 화면째 저장하므로 이 블록도 함께 남는다. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:2px solid #1a6fb5; outline-offset:2px; }
+.editbtn, .cadence, .inq-type, .inq-grade, .inq-src, .viewall-btn { font-size:11px; }
+.inq-date, .inq-foot-line { font-size:11px; color:#64748b; }
+.inq-cy { font-size:10px; color:#64748b; }
+@media (max-width:760px) {
+  .stickytop { position:static; }
+  header { padding:12px 16px; }
+  .legend { padding:10px 16px; }
+  .board { flex-direction:column; align-items:stretch; padding:12px 16px; }
+  .col { min-width:0; width:100%; }
+  .fv-grid { grid-template-columns:1fr; }
+}
+</style>
+<style id="oc-console-dark">
+/* 다크 모드 (2026-11-17) — 화면 고유 색을 Ops Console 색 이름(--oc-*)으로 옮김. 밝은 화면은 그대로.
+   카드에 직접 박힌 색(style="…")과 스크립트가 넣는 색은 속성 선택자로 덮는다. 💾저장 때 이 블록도 함께 남는다. */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+body{background:var(--oc-bg);color:var(--oc-ink)}
+header,.fv-head{background:var(--oc-nav)}
+.stickytop{box-shadow:0 2px 8px rgba(0,0,0,.45)}
+.legend{background:var(--oc-panel);border-bottom-color:var(--oc-line)}
+.legend span[style*="#64748b"]{color:var(--oc-sub)!important}
+.dot.dev{background:#5b9fe0} .dot.ops{background:#3fb96b} .dot.ts{background:#f08a4b} .dot.adm{background:#8b98a8} .dot.personal{background:#b57be8}
+.col{background:var(--oc-panel)}
+.col h2 .cnt{background:var(--oc-pt);color:var(--oc-pt-ink)}
+.card{background:var(--oc-card);border-left-color:var(--oc-line);box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.card.dev{border-left-color:#5b9fe0} .card.ops{border-left-color:#3fb96b} .card.ts{border-left-color:#f08a4b} .card.personal{border-left-color:#b57be8}
+.card.dev .id{color:#8ec0f2} .card.ops .id{color:var(--oc-good)} .card.personal .id{color:#cfa8f2}
+.card .t-req,.inq-req{color:#c7d2fe;background:#232a4a;border-color:#3b4275}
+.card .meta{color:var(--oc-sub)}
+.card .next,.inq-sum{background:var(--oc-warn-bg);color:var(--oc-warn-ink)}
+.card .warn{background:var(--oc-bad-bg);color:var(--oc-bad)}
+.detail,.detail details.ailog,.inq-detail{border-top-color:var(--oc-line)}
+.detail details.ailog summary,.detail details.ailog summary .sub{color:var(--oc-sub)}
+.detail details.ailog summary:hover{color:var(--oc-ink)}
+.detail details.ailog .ailog-body{background:var(--oc-panel);border-color:var(--oc-line);color:var(--oc-ink)}
+.hint{color:var(--oc-sub)}
+a{color:var(--oc-pt)} .oc-nav a{color:inherit}
+.editbtn{background:var(--oc-chip);border-color:var(--oc-line);color:var(--oc-ink)} .editbtn:hover{background:var(--oc-line)}
+.editform label,.editform .codes .codes-t{color:var(--oc-sub)}
+.editform input,.editform select,.editform textarea,.ovl textarea{background:var(--oc-bg);color:var(--oc-ink);border-color:var(--oc-line)}
+.ebtns button{background:var(--oc-chip);color:var(--oc-ink);border-color:var(--oc-line)}
+.ebtns .save{background:var(--oc-pt);color:var(--oc-pt-ink);border-color:var(--oc-pt)}
+.ebtns .cancel{background:var(--oc-chip)}
+.ebtns .revert{background:var(--oc-chip);color:#f3b27a;border-color:#7a4a22}
+.editbar{background:var(--oc-warn-bg);border-bottom-color:#5a4615;color:var(--oc-warn-ink)}
+.editbar button{background:var(--oc-card);color:var(--oc-warn-ink);border-color:#7a5a1f}
+.editbar .warn-txt{color:var(--oc-bad)}
+#savef[style*="#16a34a"]{background:#1f7a33!important;color:#fff!important}
+[style*="color:#b08968"]{color:#dcb994!important}
+#saverstat[style*="21, 128, 61"]{color:var(--oc-good)!important}
+#saverstat[style*="180, 83, 9"]{color:#f3b27a!important}
+.ovl .box{background:var(--oc-card);color:var(--oc-ink)}
+.sec-title{color:var(--oc-ink)} .sec-title small{color:var(--oc-sub)}
+.board.recur .col{background:#191e30}
+.board.recur .col h2 .cnt{background:#8f95e6;color:#0b1220}
+.cadence.wk{background:#16263d;color:#93c5fd} .cadence.mo{background:var(--oc-good-bg);color:var(--oc-good)} .cadence.yr{background:var(--oc-warn-bg);color:var(--oc-warn-ink)}
+.inq-panel{background:var(--oc-card);border-color:var(--oc-line)}
+.inq-note{background:#1e2240;border-color:#3b3f73;color:#c7d2fe}
+.inq-panel th,.inq-panel td{border-color:var(--oc-line)}
+.inq-panel th{background:var(--oc-panel);color:var(--oc-ink)}
+.inq-panel td a,.inq-ref a{color:#a5b4fc}
+.inq-foot,.inq-date,.inq-foot-line,.inq-cy,.inq-empty{color:var(--oc-sub)}
+.inq-foot-line{border-top-color:var(--oc-line)}
+.inq-card{background:var(--oc-card);border-color:var(--oc-line);border-left-color:var(--oc-line);box-shadow:none}
+.inq-card.urg{border-left-color:#ff8a80} .inq-card.gen{border-left-color:#5b9fe0} .inq-card.simp{border-left-color:#3fb96b}
+.inq-type.urg{background:var(--oc-bad-bg);color:var(--oc-bad)} .inq-type.gen{background:#16263d;color:#93c5fd} .inq-type.simp{background:var(--oc-good-bg);color:var(--oc-good)}
+.inq-q,.inq-code{color:var(--oc-ink)} .inq-a{color:#c3ccd7}
+.inq-grade{background:var(--oc-chip);color:var(--oc-sub)}
+.inq-grade.g-ok{background:var(--oc-good-bg);color:var(--oc-good)} .inq-grade.g-part{background:var(--oc-warn-bg);color:var(--oc-warn-ink)} .inq-grade.g-bad{background:var(--oc-bad-bg);color:var(--oc-bad)}
+.inq-src{background:#11303f;color:#7dd3fc}
+.inq-src[style*="#e8f6ea"]{background:var(--oc-good-bg)!important;color:var(--oc-good)!important}
+.inq-a[style*="#94a3b8"]{color:var(--oc-sub)!important}
+#inqstale{background:var(--oc-warn-bg)!important;border-color:#7a5a1f!important;color:var(--oc-warn-ink)}
+[style*="color:#6b5b1a"]{color:var(--oc-warn-ink)!important}
+.viewall-btn{background:var(--oc-chip);color:var(--oc-ink);border-color:var(--oc-line)}
+.viewall-btn:hover{background:var(--oc-pt);color:var(--oc-pt-ink);border-color:var(--oc-pt)}
+.fv-box{background:var(--oc-bg)}
+}}
+</style>
+<style id="oc-light-contrast">
+/* 밝은 화면 글씨 대비 보정 (2026-11-18 · DEV-066) — 흰/연회색 바탕 위 연한 글씨를 4.5:1 이상으로. 다크 화면은 oc-console-dark 가 맡으므로 건드리지 않는다. */
+@media not (prefers-color-scheme: dark) {
+  .card.ops .id { color:#15803d; }
+  .card .meta, .detail details.ailog summary { color:#4f5d70; }
+  .detail details.ailog summary .sub, .hint, .sec-title small, .inq-foot, .inq-date, .inq-foot-line, .inq-cy, .inq-empty { color:#556275; }
+  .inq-grade { color:#475569; }
+  [style*="#b08968"] { color:#7c5c42 !important; }
+}
+:root[data-theme="light"] .card.ops .id { color:#15803d; }
+</style>
+</head>
+<body>
+<nav class="oc-nav" aria-label="Ops Console">
+  <b>Ops Console</b>
+  <a href="http://127.0.0.1:5177/" data-hub="/">문의 데스크</a>
+  <a href="../task-dashboard/task-board.html" data-hub="/board">대시보드</a>
+  <a href="../archive.html" data-hub="/archive">아카이브</a>
+  <a href="../erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
+  <a href="../task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
+  <a href="../task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
+</nav>
+<script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
+(function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
+var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+<div class="stickytop">
+<header>
+  <h1>📋 운영 Task 대시보드 <small style="font-size:12px;font-weight:400">SAMPLE — 합성 표본 데이터</small></h1>
+  <div class="sub">담당 운영담당 · 정본: <code>tasks.md</code> · 카드 클릭=펼치기 / <b>✏️수정=직접 편집(브라우저 저장)</b><br>📈 <a href="metrics.html" style="color:#93c5fd;font-weight:600;">AI 협업 실증지표 보기</a></div>
+</header>
+<div class="legend">
+  <strong style="font-size:12px;">분류:</strong>
+  <span class="chip"><span class="dot dev"></span>DEV 개발</span>
+  <span class="chip"><span class="dot ops"></span>OPS 운영</span>
+  <span class="chip"><span class="dot ts"></span>TS 트러블슈팅</span>
+  <span class="chip"><span class="dot adm"></span>ADM 행정</span>
+  <span class="chip"><span class="dot personal"></span>🎓 개인학습(주간보고 제외)</span>
+  <span style="margin-left:auto;color:#64748b;">상태: 📥접수 · 🔵진행중 · ⏸️대기 · ✅완료</span>
+</div>
+<div class="editbar" id="editbar"><span>✏️ 수정→저장</span><button id="savef" style="background:#16a34a;color:#fff;font-weight:700">💾 파일에 저장 (보드 + 문의 한 번에)</button><button id="exp">📤 변경분 내보내기(JSON)</button><button id="rst">전체 초기화</button><span class="warn-txt">💾 <b>파일에 저장</b> = 원본 <code>task-board.html</code> 을 그 자리에 덮어씁니다(저장 서버 · 127.0.0.1 전용).</span><span id="saverstat" class="warn-txt" style="flex-basis: 100%;"></span></div>
+</div>
+<div class="sec-title">🔁 정기업무 <small>주례·월례·연례 — 캘린더·트리거 기반 (상태 칸반과 분리)</small></div>
+<div class="board recur" id="recurboard"></div>
+<div class="sec-title">🗂️ 일회성 · 프로젝트 <small>접수 → 진행중 → 대기 → 완료</small></div>
+<div class="board" id="board"></div>
+<div class="sec-title">📋 문의 처리 이력 <small id="inqcount"></small> <small>(접수→진행중→대기→완료 — <code>inquiry-log.js</code>)</small></div>
+<div class="editbar" id="inqeditbar" style="display: none;"></div>
+<div class="board" id="inqboard"></div>
+<div class="sec-title">💬 일반·단순 문의 (ITSM) <small>SR/개발 아닌 안내·조회성 처리 — 자주 받는 문의 빠른 응대표 (SAMPLE)</small></div>
+<div class="inq-panel">
+  <table>
+    <thead><tr><th>자주 받는 문의</th><th>1줄 답변 / 처리</th><th>참조</th></tr></thead>
+    <tbody>
+      <tr><td>사용자 ID 를 찾는 법</td><td><code>SU01D</code>(조회) / <code>SU01</code>(관리)</td><td><a href="../archive.html#sample-user-lookup">#sample-user-lookup</a></td></tr>
+      <tr><td>판매오더 조회</td><td><code>VA03</code> — 판매오더 조회</td><td><a href="../archive.html#sample-order-flow">#sample-order-flow</a></td></tr>
+      <tr><td>여신 한도 확인</td><td><code>UKM_BP</code> / 보류 해제 <code>VKM1</code></td><td><a href="../archive.html#sample-credit-block">#sample-credit-block</a></td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="hint">※ ✏️수정은 <b>이 브라우저(localStorage)에만</b> 저장됩니다. 저장 서버가 켜져 있으면 💾저장이 원본 파일을 덮어씁니다.</div>
+
+<script src="inquiry-log.js"></script>
+<script src="_saver_token.js"></script><!-- 저장 서버(5178) 쓰기 토큰 · 2026-11-17 -->
+<script>
+// ── Task 데이터 — SAMPLE(합성 표본 6건 · 실제 업무 아님) ──
+const TASKS = [
+  {"id": "DEV-001", "cls": "dev", "status": "진행중", "title": "SAMPLE — 출하 지연 알림 리포트 개선", "req": "영업지원팀 (합성 표본)", "due": "미지정", "next": "✅요건 정리 ✅개발계 구현 ▶검증", "warn": false, "detail": "[SAMPLE] 합성 표본 카드입니다. 출하 예정일이 지난 납품 건을 매일 아침 목록으로 보여 주는 리포트(ZXX_REPORT01)를 개선합니다.", "ailog": "SAMPLE — AI 참조 로그 예시: 요건 정리 → 표준 테이블(LIKP·LIPS) 기준 조회로 구현."},
+  {"id": "DEV-002", "cls": "dev", "status": "접수", "title": "SAMPLE — 판매오더 일괄 변경 도구 검토", "req": "Team A (합성 표본)", "due": "미지정", "next": "가능 여부 평가", "warn": false, "detail": "[SAMPLE] VA02 반복 작업을 줄이기 위한 일괄 변경 도구 요청.", "ailog": "SAMPLE"},
+  {"id": "DEV-003", "cls": "dev", "status": "완료", "title": "SAMPLE — 청구 문서 출력 양식 오탈자 수정", "req": "Team B (합성 표본)", "due": "완료", "next": "✅운영 반영", "warn": false, "detail": "[SAMPLE] 출력 양식 문구 수정.", "ailog": "SAMPLE"},
+  {"id": "TS-001", "cls": "ts", "status": "대기", "title": "SAMPLE — 여신 보류 해제 후에도 출하가 막히는 현상", "req": "영업지원팀 (합성 표본)", "due": "현업 회신 대기", "next": "현업 화면 캡처 요청", "warn": true, "detail": "[SAMPLE] UKM_BP 한도 확인 → VKM1 보류 해제 절차 안내 후 회신 대기.", "ailog": "SAMPLE"},
+  {"id": "OPS-001", "cls": "ops", "status": "정기", "recurring": true, "cadence": "월례", "title": "SAMPLE — 월 마감 전 미청구 납품 점검", "req": "운영담당 (합성 표본)", "due": "매월 초", "next": "VF04 미청구 목록 확인", "warn": false, "detail": "[SAMPLE] 월례 정기업무 예시.", "ailog": "SAMPLE"},
+  {"id": "OPS-002", "cls": "ops", "status": "정기", "recurring": true, "cadence": "주례", "title": "SAMPLE — 주간 문의 처리 현황 정리", "req": "운영담당 (합성 표본)", "due": "매주", "next": "문의 데스크 현황 확인", "warn": false, "detail": "[SAMPLE] 주례 정기업무 예시.", "ailog": "SAMPLE"}
+];
+
+const COLS = [
+  {key:'접수',   label:'📥 접수'},
+  {key:'진행중', label:'🔵 진행중'},
+  {key:'대기',   label:'⏸️ 대기'},
+  {key:'완료',   label:'✅ 완료'},
+];
+
+// ── 편집(localStorage) ────────────────────────────────────────────
+const LS_KEY = 'sd-task-overrides-v1';
+const EDITABLE = ['status','title','req','due','next','detail'];
+const STATUSES = ['접수','진행중','대기','완료'];
+let overrides = loadOverrides();
+function loadOverrides(){ try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(e){ return {}; } }
+function saveOverrides(){ localStorage.setItem(LS_KEY, JSON.stringify(overrides)); }
+function mergedTasks(){ return TASKS.map(t => ({ ...t, ...(overrides[t.id] || {}) })); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+const RECUR_COLS = [
+  {key:'주례', label:'📅 주례'},
+  {key:'월례', label:'🗓️ 월례'},
+  {key:'연례', label:'📆 연례'},
+];
+const board = document.getElementById('board');
+const recurboard = document.getElementById('recurboard');
+const editbar = document.getElementById('editbar');
+
+function render(){
+  const tasks = mergedTasks();
+  renderBoard(recurboard, RECUR_COLS, tasks.filter(t => t.recurring), 'cadence');
+  renderBoard(board, COLS, tasks.filter(t => !t.recurring), 'status');
+  renderBar();
+}
+
+function renderBoard(boardEl, cols, items, groupKey){
+  boardEl.innerHTML = '';
+  cols.forEach(c => {
+    const list = items.filter(t => (t[groupKey] || '') === c.key).reverse();   // 최신순(최근 추가/이동이 위)
+    const col = document.createElement('div');
+    col.className = 'col';
+    const viewAll = (c.key === '완료' && list.length) ? `<button class="viewall-btn" type="button">⤢ 전체보기</button>` : '';
+    col.innerHTML = `<h2><span>${c.label}</span><span class="h2-right"><span class="cnt">${list.length}</span>${viewAll}</span></h2>`;
+    const wrap = document.createElement('div');
+    wrap.className = 'col-cards' + (c.key === '완료' ? ' scroll' : '');   // 완료 컬럼만 높이고정·스크롤
+    list.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'card ' + t.cls + (overrides[t.id] ? ' edited' : '');
+      card.innerHTML = viewHTML(t);
+      card.querySelector('.head').addEventListener('click', (e) => {
+        if (e.target.closest('.editbtn')) return;           // 수정 버튼 클릭은 토글 제외
+        if (window.getSelection && String(window.getSelection())) return; // 드래그 선택 중 토글 안 함
+        card.classList.toggle('open');
+      });
+      card.querySelector('.editbtn').addEventListener('click', (e) => { e.stopPropagation(); openEdit(card, t); });
+      wrap.appendChild(card);
+    });
+    col.appendChild(wrap);
+    const vab = col.querySelector('.viewall-btn');
+    if (vab) vab.addEventListener('click', () => {
+      const cards = list.map(t => `<div class="card ${t.cls}">${viewHTML(t)}</div>`).join('');
+      const where = boardEl.id === 'board' ? ' — 일회성·프로젝트' : '';
+      openFullView(`${c.label}${where} (${list.length}건)`, cards);
+    });
+    boardEl.appendChild(col);
+  });
+}
+
+// ── 완료 카드 큰화면 모달 (전체보기) ─────────────────────────────────
+function openFullView(title, innerHTML){
+  const ovl = document.createElement('div');
+  ovl.className = 'fv-ovl';
+  ovl.innerHTML =
+    `<div class="fv-box">` +
+      `<div class="fv-head"><h3>${esc(title)}</h3><button class="fv-close" title="닫기 (Esc)">✕</button></div>` +
+      `<div class="fv-grid">${innerHTML || '<div class="inq-empty">완료된 카드가 없습니다.</div>'}</div>` +
+    `</div>`;
+  document.body.appendChild(ovl);
+  function onKey(e){ if (e.key === 'Escape') close(); }
+  function close(){ ovl.remove(); document.removeEventListener('keydown', onKey); }
+  document.addEventListener('keydown', onKey);
+  ovl.querySelector('.fv-close').onclick = close;
+  ovl.addEventListener('click', (e) => { if (e.target === ovl) close(); });
+}
+
+function cadCls(c){ return c==='주례'?'wk':c==='월례'?'mo':c==='연례'?'yr':''; }
+// 🤖 AI 참조 로그 — 시계열 작업로그·AI 방침을 본문 아래 접힘 영역으로. 사람은 본문까지만,
+// AI는 카드 참조 시 이 로그까지 반드시 정독(요약 금지·정본 맥락). 비어 있으면 표시 안 함.
+function ailogHTML(t){
+  if (!t.ailog) return '';
+  return `<details class="ailog"><summary>🤖 AI 참조 로그 <span class="sub">— 시계열 작업로그·AI 방침 (사람은 위 본문까지만 읽어도 됩니다)</span></summary><div class="ailog-body">${esc(t.ailog)}</div></details>`;
+}
+function viewHTML(t){
+  const cad = (t.recurring && t.cadence) ? `<span class="cadence ${cadCls(t.cadence)}">🔁${esc(t.cadence)}</span>` : '';
+  const dueLabel = t.recurring ? '주기/다음' : '기한';
+  return `<div class="head">` +
+      `<div class="row1"><span class="id-wrap"><span class="id">${esc(t.id)}${cad}${overrides[t.id]?' ✏️':''}</span>` +
+        (t.req ? `<span class="t-req">👤 ${esc(t.req)}</span>` : '') +
+      `</span><button class="editbtn" title="이 카드 직접 수정">✏️ 수정</button></div>` +
+      `<div class="title">${esc(t.title)}</div>` +
+      `<div class="meta">${dueLabel}: ${esc(t.due)}</div>` +
+      `<div class="next ${t.warn?'warn':''}">▶ ${esc(t.next)}</div>` +
+    `</div>` +
+    `<div class="detail">${esc(t.detail)}${ailogHTML(t)}</div>`;
+}
+
+function openEdit(card, t){
+  card.classList.add('open');
+  const isR = !!t.recurring;
+  const firstField = isR
+    ? `<label>주기 <select name="cadence">${['주례','월례','연례'].map(s=>`<option ${s===t.cadence?'selected':''}>${s}</option>`).join('')}</select></label>`
+    : `<label>상태 <select name="status">${STATUSES.map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}</select></label>`;
+  const fields = isR ? ['cadence','title','req','due','next','detail','ailog'] : ['status','title','req','due','next','detail','ailog'];
+  card.innerHTML =
+    `<div class="editform">` +
+      `<div class="id">${esc(t.id)} 수정${isR?' (정기업무)':''}</div>` +
+      firstField +
+      `<label>제목 <input name="title" value="${escAttr(t.title)}"></label>` +
+      `<label>요청 <input name="req" value="${escAttr(t.req)}"></label>` +
+      `<label>${isR?'주기/다음':'기한'} <input name="due" value="${escAttr(t.due)}"></label>` +
+      `<label>다음 액션 <input name="next" value="${escAttr(t.next)}"></label>` +
+      `<label>상세 (본문 — 사람용 정리) <textarea name="detail" rows="9">${esc(t.detail)}</textarea></label>` +
+      `<label>🤖 AI 참조 로그 (접힘 영역 — 시계열·교훈·AI 방침) <textarea name="ailog" rows="7">${esc(t.ailog || '')}</textarea></label>` +
+      `<div class="ebtns">` +
+        `<button class="save">저장</button>` +
+        `<button class="cancel">취소</button>` +
+        `<button class="revert">기본값 복원</button>` +
+      `</div>` +
+    `</div>`;
+  const f = card.querySelector('.editform');
+  card.querySelector('.save').addEventListener('click', () => {
+    const def = TASKS.find(x => x.id === t.id) || {};
+    const o = {};
+    fields.forEach(k => {
+      const val = f.querySelector(`[name="${k}"]`).value;
+      if (val !== (def[k] == null ? '' : def[k])) o[k] = val;  // 기본값과 다른 필드만 저장
+    });
+    if (Object.keys(o).length) overrides[t.id] = o;            // 실제 변경 있을 때만 override
+    else delete overrides[t.id];                                // 무변경이면 override 제거
+    saveOverrides();
+    render();
+  });
+  card.querySelector('.cancel').addEventListener('click', render);
+  card.querySelector('.revert').addEventListener('click', () => {
+    delete overrides[t.id]; saveOverrides(); render();
+  });
+}
+
+function renderBar(){
+  const n = Object.keys(overrides).length;
+  // 저장 버튼은 **보드와 문의를 함께** 책임진다. 둘 중 하나라도 바뀌면 켜진다.
+  // (inqOverrides 는 아래에서 var 로 선언된다 — 첫 render() 때는 아직 undefined 라 0으로 본다.
+  //  값이 채워진 뒤 renderInquiryLog() 다음에 renderBar()를 한 번 더 부른다)
+  const nInq = (typeof inqOverrides === 'undefined') ? 0 : Object.keys(inqOverrides).length;
+  const nAll = n + nInq;
+  editbar.innerHTML =
+    `<span>✏️ 수정→저장 · 카드 <b>${n}건</b>${nInq?` · 문의 <b>${nInq}건</b>`:''}</span>` +
+    `<button id="savef"${nAll?'':' disabled'} style="${nAll?'background:#16a34a;color:#fff;':''}font-weight:700">💾 파일에 저장 (보드 + 문의 한 번에)</button>` +
+    `<button id="exp"${n?'':' disabled'}>📤 변경분 내보내기(JSON)</button>` +
+    `<button id="rst"${n?'':' disabled'}>전체 초기화</button>` +
+    (n ? `<span class="warn-txt">💾 <b>파일에 저장</b> = 원본 <code>task-board.html</code> 을 그 자리에 덮어씁니다. 내보내기(JSON)는 옛 동기화 방식.</span>`
+       : `<span style="color:#b08968;">(수정하면 여기 버튼이 활성화됩니다)</span>`) +
+    `<span id="saverstat" class="warn-txt" style="flex-basis:100%"></span>`;
+  if (nAll){
+    editbar.querySelector('#savef').onclick = saveAll;
+    _saverRefresh();
+    editbar.querySelector('#exp').onclick = exportJSON;
+    editbar.querySelector('#rst').onclick = () => {
+      if (confirm('이 브라우저에 저장된 모든 카드 수정을 지우고 기본값(tasks.md 기준)으로 되돌릴까요?')){
+        overrides = {}; saveOverrides(); render();
+      }
+    };
+  }
+}
+
+function exportJSON(){
+  const json = JSON.stringify(overrides, null, 2);
+  const ovl = document.createElement('div');
+  ovl.className = 'ovl';
+  ovl.innerHTML =
+    `<div class="box">` +
+      `<h3>변경분(JSON) — 복사해서 tasks.md 동기화에 사용</h3>` +
+      `<textarea readonly></textarea>` +
+      `<div class="ebtns"><button class="save" id="cp">클립보드 복사</button>` +
+      `<button class="cancel" id="cls">닫기</button></div>` +
+    `</div>`;
+  document.body.appendChild(ovl);
+  const ta = ovl.querySelector('textarea');
+  ta.value = json; ta.focus(); ta.select();
+  ovl.querySelector('#cp').onclick = () => {
+    ta.select();
+    try { navigator.clipboard.writeText(json); } catch(e){ try { document.execCommand('copy'); } catch(_){} }
+    ovl.querySelector('#cp').textContent = '복사됨 ✓';
+  };
+  const close = () => ovl.remove();
+  ovl.querySelector('#cls').onclick = close;
+  ovl.addEventListener('click', (e) => { if (e.target === ovl) close(); });
+}
+
+// ── 🖥 로컬 저장 서버(board-saver.py) — 켜져 있으면 「다른 이름으로 저장」 창 없이 원본을 그 자리에 덮어쓴다 ──
+// 브라우저 File System Access API 는 보안상 첫 저장·브라우저 재시작마다 사용자 승인을 요구해
+// "묻지 않는 덮어쓰기"가 원천적으로 불가능하다. 그래서 로컬 서버(127.0.0.1:5178)가 대신 파일에 쓴다.
+// 서버가 꺼져 있으면 아래 FSA 경로로 자동 폴백 → 기존 사용법 그대로.
+const SAVER_URL = 'http://127.0.0.1:5178';
+let _saverUp = null;                        // null=미확인 / true=가동 / false=꺼짐
+async function _saverPing(){
+  try{
+    const c = new AbortController(); const t = setTimeout(()=>c.abort(), 1500);
+    const r = await fetch(SAVER_URL + '/ping', {signal:c.signal, cache:'no-store'});
+    clearTimeout(t); _saverUp = r.ok;
+  }catch(e){ _saverUp = false; }
+  return _saverUp;
+}
+// 저장 시도. {ok} 성공 / {refused:true} 서버는 살아있는데 거부(형식·크기 이상 → 폴백 금지) / {refused:false} 서버 꺼짐
+async function _saverSave(path, body){
+  try{
+    // 쓰기 토큰(_saver_token.js · 같은 폴더) — 외부 웹페이지의 위장 저장 차단(2026-11-17). 옛 서버는 ?t= 를 무시해 그대로 동작.
+    const tok = (typeof window.BOARD_SAVER_TOKEN === 'string') ? window.BOARD_SAVER_TOKEN : '';
+    const r = await fetch(SAVER_URL + path + (tok ? ('?t=' + encodeURIComponent(tok)) : ''), {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=UTF-8','X-Board-Saver':'1'},
+      body
+    });
+    let j = {}; try{ j = await r.json(); }catch(_e){}
+    if (r.ok && j.ok){ _saverUp = true; return {ok:true, info:j}; }
+    _saverUp = true;
+    return {ok:false, refused:true, err:(j.err || ('HTTP ' + r.status))};
+  }catch(e){ _saverUp = false; return {ok:false, refused:false, err:e.message}; }
+}
+let _saverPingAt = 0;
+// 저장 버튼이 활성화되는 순간(수정 발생) 서버 상태를 새로 확인 — 도중에 서버를 켰어도 바로 반영. 5초 스로틀.
+function _saverRefresh(){
+  const now = Date.now();
+  if (now - _saverPingAt < 5000){ _paintSaverStat(); return; }
+  _saverPingAt = now; _saverPing().then(_paintSaverStat);
+}
+function _paintSaverStat(){
+  const on  = _saverUp === true;
+  const txt = _saverUp === null ? ''
+            : on ? '🖥 저장 서버 연결됨 — 💾저장 시 원본을 그 자리에 덮어씁니다(경로 안 물음)'
+                 : '🖥 저장 서버 꺼짐 — 💾저장 때 위치를 한 번 묻습니다 (켜기: 6_대시보드_저장서버.bat)';
+  document.querySelectorAll('#saverstat,#inqsaverstat').forEach(el => {
+    el.textContent = txt; el.style.color = on ? '#15803d' : '#b45309';
+  });
+}
+
+// ── 💾 파일에 직접 저장 (서버·클로드 불필요) ──
+// 핸들 키는 앱별 고유(_FS_KEY) — 과거 공용 키('f')는 같은 폴더의 아카이브 편집기와 충돌해
+// 아카이브 저장이 이 파일을 덮어쓴 사고가 있었음(2026-06-10). 파일명 검증(_FS_NAME)도 필수.
+const _FS_KEY='sap-board', _FS_NAME='task-board.html';
+function _fsOpen(){ return new Promise(r=>{ const q=indexedDB.open('tbfs',1); q.onupgradeneeded=()=>q.result.createObjectStore('h'); q.onsuccess=()=>r(q.result); q.onerror=()=>r(null); }); }
+async function _fsLoad(){ try{ const db=await _fsOpen(); if(!db) return null; return await new Promise(r=>{ const g=db.transaction('h').objectStore('h').get(_FS_KEY); g.onsuccess=()=>r(g.result||null); g.onerror=()=>r(null); }); }catch(e){ return null; } }
+async function _fsStore(h){ try{ const db=await _fsOpen(); if(db) db.transaction('h','readwrite').objectStore('h').put(h,_FS_KEY); }catch(e){} }
+async function _fsForget(){ window._fh=null; try{ const db=await _fsOpen(); if(db) db.transaction('h','readwrite').objectStore('h').delete(_FS_KEY); }catch(e){} }
+async function _pickFileHandle(){
+  let h = window._fh || await _fsLoad();
+  if (h && h.name !== _FS_NAME) h = null;   // 다른 파일을 가리키는 핸들(과거 공용키 등) 차단
+  if (h){ try{ const o={mode:'readwrite'}; if(await h.queryPermission(o)!=='granted' && await h.requestPermission(o)!=='granted') h=null; }catch(e){ h=null; } }
+  if (!h){
+    h = await window.showSaveFilePicker({ id:_FS_KEY, startIn:'documents', suggestedName:_FS_NAME, types:[{description:'HTML', accept:{'text/html':['.html']}}] });
+    if (h.name !== _FS_NAME) _toast('⚠ 선택한 파일명이 '+_FS_NAME+' 이 아닙니다 — 저장 위치를 확인하세요');
+    await _fsStore(h);
+  }
+  window._fh = h; return h;
+}
+async function saveToFile(){
+  const merged = mergedTasks();
+  const stamp = 'sv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+  const literal = 'const TASKS = ' + JSON.stringify(merged, null, 2) + ';';
+  const doc = document.documentElement.cloneNode(true);
+  doc.setAttribute('data-saved', stamp);
+  doc.querySelectorAll('[data-noexport], .ovl').forEach(el => el.remove());
+  let html = '<!DOCTYPE html>\n' + doc.outerHTML + '\n';
+  // ⚠️치환 전 패턴 검증 필수 — 과거 TASKS.push() 잔재로 배열이 쪼개져 있으면 replace가 조용히 무효화되고
+  // 그대로 진행하면 overrides만 지워지고 파일엔 옛 내용이 그대로 남는 사고가 남(2026-08-10 DEV-027 사례).
+  const tasksRe = /(const TASKS = \[[\s\S]*?\n\];)(\s*\nconst COLS =)/;
+  if (!tasksRe.test(html)){
+    _toast('⚠ 저장 실패 — TASKS 배열 패턴을 찾지 못했습니다(파일 구조 이상, 수정 미반영). 클로드에게 문의하세요');
+    return;
+  }
+  html = html.replace(tasksRe, (m, p1, p2) => literal + p2);
+  TASKS.length = 0; merged.forEach(t => TASKS.push(t));   // 치환 검증 통과 후에만 정본 배열에 베이크
+  // ① 저장 서버가 켜져 있으면: 경로를 묻지 않고 원본 task-board.html 을 그 자리에서 덮어쓴다(백업은 서버가 뜬다)
+  {
+    const srv = await _saverSave('/save/board', html);
+    if (srv.ok){
+      overrides = {}; saveOverrides();
+      try{ localStorage.setItem('sap-board-saved-stamp', stamp); }catch(_e){}
+      render(); _paintSaverStat();
+      _toast('원본 파일에 덮어썼습니다 ✓ (저장 서버 · 경로 선택 없음)'); return;
+    }
+    if (srv.refused){ _paintSaverStat(); _toast('⚠ 저장 서버가 거부 — ' + srv.err); return; }
+  }
+  // ② 서버가 꺼져 있을 때만: 기존 브라우저 저장(첫 1회 위치 지정 → 이후 같은 파일 덮어쓰기)
+  if (window.showSaveFilePicker){
+    try {
+      const h = await _pickFileHandle();
+      const w = await h.createWritable({ keepExistingData: true }); await w.write(html); await w.close();
+      const f = await h.getFile();                                            // 라운드트립 확인
+      if (f.size !== new Blob([html]).size){ _toast('⚠ 저장 검증 실패 — 기록된 크기가 다릅니다. 다시 시도하세요'); return; }
+      overrides = {}; saveOverrides();
+      try{ localStorage.setItem('sap-board-saved-stamp', stamp); }catch(_e){}
+      render(); _toast('파일에 저장됨 ✓ ('+h.name+') — 다음에 열어도 유지'); return;
+    } catch(err){
+      if (err.name === 'AbortError'){ _toast('⚠ 저장 취소됨 — 파일에 기록되지 않았습니다'); return; }
+      _toast('⚠ 직접 저장 실패('+err.name+') — 다운로드로 대체합니다');
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download = 'task-board.html'; a.click();
+  overrides = {}; saveOverrides();
+  try{ localStorage.setItem('sap-board-saved-stamp', stamp); }catch(_e){}
+  render(); _toast('다운로드됨 — 원본 task-board.html 에 덮어쓰세요');
+}
+function _toast(msg){
+  const t = document.createElement('div'); t.setAttribute('data-noexport','');
+  t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#16a34a;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2)';
+  t.textContent = msg; document.body.appendChild(t); setTimeout(()=>t.remove(), 3000);
+}
+// 로드 시: 마지막 저장 스탬프가 이 파일에 없으면 = 저장이 딴 파일로 갔다는 뜻 → 경고
+(function(){
+  try{
+    const want = localStorage.getItem('sap-board-saved-stamp');
+    if (!want || document.documentElement.getAttribute('data-saved')===want) return;
+    const d = document.createElement('div'); d.setAttribute('data-noexport','');
+    d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#7c2d12;color:#fff;padding:10px 16px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap';
+    d.innerHTML='⚠ <b>마지막 💾저장이 이 파일에 반영되어 있지 않습니다.</b> 저장이 다른 위치의 파일로 갔을 수 있어요.';
+    const btn=document.createElement('button'); btn.textContent='저장 위치 재선택';
+    btn.style.cssText='background:#fff;color:#7c2d12;border:0;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700';
+    btn.onclick=async()=>{ await _fsForget(); localStorage.removeItem('sap-board-saved-stamp'); d.remove(); _toast('기억한 저장 위치를 지웠습니다 — 다음 💾저장 때 다시 선택'); };
+    const x=document.createElement('button'); x.textContent='확인(닫기)';
+    x.style.cssText='background:transparent;color:#fff;border:1px solid #ffffff88;border-radius:6px;padding:4px 10px;cursor:pointer';
+    x.onclick=()=>{ localStorage.removeItem('sap-board-saved-stamp'); d.remove(); };
+    d.append(btn,x); document.body.appendChild(d);
+  }catch(e){}
+})();
+
+render();
+_saverPingAt = Date.now(); _saverPing().then(_paintSaverStat);   // 로컬 저장 서버 가동 여부 1회 탐지(꺼져 있어도 무해)
+
+// ── 문의 처리 이력 보드 (id 병합 2단계 · 접수/진행중/대기/완료) ──
+const INQ_COLS = [
+  {key:'접수',   label:'📥 접수'},
+  {key:'진행중', label:'🔵 진행중'},
+  {key:'대기',   label:'⏸️ 대기'},
+  {key:'완료',   label:'✅ 완료'},
+];
+const INQ_STATUSES = ['접수','진행중','대기','완료'];
+const INQ_TYPES = ['단순문의','일반요청','긴급문의'];
+// 🤖 트리니티봇 답 판정 — 맞음/보완/틀림. 검증 장부(vacation/ledger.py)가 모아 정확도를 낸다(2026-09-11).
+//    트리니티봇 권한 확대(운영계까지)의 근거라, 트리니티봇이 답한 카드에만 판정 칸을 보인다. 현업 화면에는 나가지 않는다.
+var BOT_GRADES = ['맞음','보완','틀림'];
+var BOT_GRADE_CLS = {'맞음':'g-ok','보완':'g-part','틀림':'g-bad'};
+// 판정 이유 코드 — 보완·틀림이면 무엇이 문제였나. 메모는 글이라 집계가 안 된다(2026-09-30). 정본 = vacation/config.json 의 reason_codes
+// (log-inquiry.py --grade-code 와 같은 어휘 · tests/unit_metrics.py 가 셋을 대조한다)
+var BOT_CODES = ['사실오류','위험안내','기존기능놓침','용어노출','과잉보류','누락','가독성','기타'];
+var BOT_CODE_HINT = {'사실오류':'결론이나 사실이 틀렸다','위험안내':'권한 밖이거나 되돌릴 수 없는 조작(한도 변경·삭제 등)을 안내했다','기존기능놓침':'이미 있는 화면·기능으로 되는 것을 놓쳤다(불필요한 개발 안내 포함)','용어노출':'현업 답에 테이블·필드명·내부 번호 같은 개발자 용어가 나왔다','과잉보류':'답할 수 있었는데 보류·에스컬레이션했다','누락':'핵심 절차·주의가 빠졌다','가독성':'줄 바꿈·구성이 읽기 어렵다','기타':'위에 없는 이유(메모에 적어 주십시오)'};
+function _botCodes(v){ return String(v||'').split(/[,\s]+/).filter(Boolean); }
+function isBotAnswered(e){ const a = (e && e.a) || ''; return a.startsWith('[트리니티봇') || a.startsWith('[담당자 부재중'); }
+function _gradeable(e){ return !!(e && (e.botgrade || isBotAnswered(inqBaseById[e.id] || e) || isBotAnswered(e))); }
+function _nowStamp(){ const d = new Date(), p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+// ── 문의 카드 편집(localStorage) — inquiry-log.js는 append-only라 전체덮어쓰기 대신
+// 바뀐 필드만 새 push()줄로 추가해 저장한다(log-inquiry.py와 같은 원리, 다세션 안전) ──
+const INQ_LS_KEY = 'sd-inquiry-overrides-v1';
+// ⚠️ var 로 둔다 — 위의 renderBar()가 첫 render() 때 이 변수를 먼저 들여다본다.
+//    let 이면 선언 전 구간(TDZ)이라 typeof 확인조차 ReferenceError 로 터지고, 그 뒤 스크립트가
+//    전부 멈춰 문의 보드가 옛 저장본 그대로 남았다(2026-09-10 실측: 새 문의가 안 올라옴).
+var inqOverrides = loadInqOverrides();
+function loadInqOverrides(){ try { return JSON.parse(localStorage.getItem(INQ_LS_KEY) || '{}'); } catch(e){ return {}; } }
+function saveInqOverrides(){ localStorage.setItem(INQ_LS_KEY, JSON.stringify(inqOverrides)); }
+let inqBaseById = {};     // id → override 적용 전 원본(수정폼 기본값 대조·저장 시 diff 계산용)
+let editingInqId = null;  // 지금 수정폼이 열려있는 카드 id
+// ── 문의자 종결(2026-10-06) — 판정 기준의 정본은 stale_cases.py. 아래는 같은 기준을 옮긴 것이다(둘을 같이 고칠 것).
+//    문의자가 내 문의함 [케이스 닫기]를 누르면 상태가 바로 「완료」가 되고 req_closed(닫은 시각)가 남는다.
+//    트리니티봇 확정 답변 끝에는 종결 질문이 붙는다 — 그 질문을 받고도 48시간 안 닫힌 건을 담당자에게 알린다.
+const CLOSE_ASK_KEY = '해결되셨으면 아래 [케이스 닫기]를 눌러 주십시오';
+const STALE_HOURS = 48;
+function lastQStamp(q){ const m = String(q||'').match(/──── 추가 질문 \(([^)]*)\) ────/g); if (!m) return ''; const l = m[m.length-1].match(/\(([^)]*)\)/); return l ? l[1] : ''; }
+function isReqClosed(e){ return !!(e && e.req_closed && (e.status||'') === '완료' && e.req_closed >= lastQStamp(e.q)); }
+function staleCases(all){
+  const now = Date.now();
+  return all.filter(e => {
+    if (e.by !== '웹접수' || (e.status||'접수') !== '대기') return false;
+    const lb = String(e.a||'').split('──── 추가 답변').pop();
+    if (lb.indexOf(CLOSE_ASK_KEY) < 0) return false;
+    const st = lb.match(/⏱(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/g);
+    if (!st) return false;
+    const stamp = st[st.length-1].slice(1);
+    if (lastQStamp(e.q) > stamp) return false;            // 답 뒤에 추가 질문이 붙었다 — 답을 기다리는 중
+    const t = new Date(stamp.replace(' ', 'T') + ':00').getTime();
+    return (now - t) >= STALE_HOURS * 3600 * 1000;
+  });
+}
+function inqCard(e){
+  const t = e.type || '단순문의';
+  const cls = t === '긴급문의' ? 'urg' : (t === '일반요청' ? 'gen' : 'simp');
+  if (e.id && e.id === editingInqId) return inqEditForm(e);
+  return `<div class="inq-card ${cls}${(e.id && inqOverrides[e.id])?' edited':''}">` +
+    `<div class="inq-head">` +
+      `<div class="inq-card-top"><span class="inq-code-wrap"><span class="inq-cy">▸</span><span class="inq-code">${esc(e.id||'(코드없음)')}${(e.id && inqOverrides[e.id])?' ✏️':''}</span>` +
+        (e.req ? `<span class="inq-req">👤 ${esc(e.req)}${e.role ? ' · ' + esc(e.role) : ''}</span>` : '') +
+        (e.by === '웹접수' ? `<span class="inq-src" title="접수페이지(사내망 창구)로 들어온 문의 — 휴가모드 중엔 트리니티봇이 1차 대응합니다">🌐 접수페이지</span>` : '') +
+        (isReqClosed(e) ? `<span class="inq-src" style="background:#e8f6ea;color:#1f7a33" title="문의자가 내 문의함에서 직접 닫았습니다 (${esc(e.req_closed||'')}) — 트리니티봇 답변 판정(✏️수정)이 필요합니다">✔ 문의자 종결</span>` : '') +
+        (_gradeable(e) ? `<span class="inq-grade ${BOT_GRADE_CLS[e.botgrade] || ''}" title="트리니티봇 답 판정 — ✏️수정에서 고르면 검증 장부에 쌓입니다${e.botgrade_code ? ' · 이유: ' + esc(e.botgrade_code) : ''}">🤖 ${esc(e.botgrade || '판정 전')}</span>` : '') +
+      `</span><span class="inq-type ${cls}">${esc(t)}</span>` +
+      (e.id ? `<button class="editbtn" type="button" data-id="${escAttr(e.id)}" title="이 문의 직접 수정">✏️ 수정</button>` : '') +
+      `</div>` +
+      `<div class="inq-sum">💬 ${esc(e.q||'')}</div>` +
+    `</div>` +
+    `<div class="inq-detail">` +
+      (e.a ? `<div class="inq-a">▶ ${esc(e.a)}</div>` : `<div class="inq-a" style="color:#94a3b8;">처리/답변 미기록</div>`) +
+      (e.ref ? `<div class="inq-ref"><a href="../archive.html${esc(e.ref)}">${esc(e.ref)}</a></div>` : '') +
+      `<div class="inq-foot-line">${esc(e.date||'')}${e.by ? ' · ' + esc(e.by) : ''}</div>` +
+    `</div>` +
+  `</div>`;
+}
+function inqEditForm(e){
+  return `<div class="inq-card editform-wrap" data-id="${escAttr(e.id)}">` +
+    `<div class="editform">` +
+      `<div class="id">${esc(e.id)} 수정</div>` +
+      `<label>상태 <select name="status">${INQ_STATUSES.map(s=>`<option ${s===(e.status||'접수')?'selected':''}>${s}</option>`).join('')}</select></label>` +
+      `<label>유형 <select name="type">${INQ_TYPES.map(s=>`<option ${s===(e.type||'단순문의')?'selected':''}>${s}</option>`).join('')}</select></label>` +
+      `<label>요청자·조직 <input name="req" value="${escAttr(e.req||'')}"></label>` +
+      `<label>문의 요약 <textarea name="q" rows="2">${esc(e.q||'')}</textarea></label>` +
+      `<label>처리/답변 <textarea name="a" rows="4">${esc(e.a||'')}</textarea></label>` +
+      (_gradeable(e) ?
+        `<label>🤖 트리니티봇 답 판정 <select name="botgrade"><option value="">(판정 전)</option>${BOT_GRADES.map(g=>`<option ${g===(e.botgrade||'')?'selected':''}>${g}</option>`).join('')}</select></label>` +
+        `<label>판정 메모 (보완·틀림이면 무엇이 달랐는지) <input name="botgrade_note" value="${escAttr(e.botgrade_note||'')}"></label>` +
+        `<div class="codes"><span class="codes-t">이유 코드 (보완·틀림이면 해당하는 것 모두 — 장부가 유형별로 셉니다)</span>` +
+          BOT_CODES.map(c => `<label class="codechk" title="${escAttr(BOT_CODE_HINT[c]||'')}"><input type="checkbox" name="botgrade_code_cb" value="${escAttr(c)}" ${_botCodes(e.botgrade_code).includes(c)?'checked':''}> ${esc(c)}</label>`).join('') +
+        `</div>` : '') +
+      `<label>참조(archive 앵커) <input name="ref" value="${escAttr(e.ref||'')}"></label>` +
+      `<label>기록 담당 <input name="by" value="${escAttr(e.by||'')}"></label>` +
+      `<label>날짜 <input name="date" value="${escAttr(e.date||'')}"></label>` +
+      `<div class="ebtns">` +
+        `<button class="save" data-act="save" data-id="${escAttr(e.id)}">저장</button>` +
+        `<button class="cancel" data-act="cancel" data-id="${escAttr(e.id)}">취소</button>` +
+        `<button class="revert" data-act="revert" data-id="${escAttr(e.id)}">기본값 복원</button>` +
+      `</div>` +
+    `</div>` +
+  `</div>`;
+}
+/* eslint-enable */
+function renderInquiryLog(){
+  const board = document.getElementById('inqboard');
+  const cnt = document.getElementById('inqcount');
+  const raw = window.INQUIRY_LOG || [];
+  const merged = {}, ids = [];
+  raw.forEach((e, i) => {
+    const id = e.id || ('_' + i);
+    if (!(id in merged)) { merged[id] = {}; ids.push(id); }
+    Object.assign(merged[id], e);            // 같은 id면 나중 push가 덮어씀(상태 전이 병합)
+  });
+  inqBaseById = merged;
+  const all = ids.map(id => ({ ...merged[id], ...(inqOverrides[id] || {}) }));   // 브라우저 로컬 수정 반영
+  const undone = all.filter(e => (e.status || '접수') !== '완료').length;
+  if (cnt) cnt.textContent = `총 ${all.length}건` + (undone ? ` · 미완 ${undone}` : '');
+  if (!board) return;
+  // 담당자에게 알릴 것 — ① 종결 질문을 받고도 48시간 안 닫힌 건 ② 문의자가 직접 닫았는데 답변 판정이 없는 건
+  let sb = document.getElementById('inqstale');
+  if (!sb){ sb = document.createElement('div'); sb.id = 'inqstale'; board.parentNode.insertBefore(sb, board); }
+  const sc = staleCases(all), cl = all.filter(e => isReqClosed(e) && !e.botgrade);
+  const isHoldClosed = e => String(e.a||'').split('──── 추가 답변').pop().replace(/^\s*\([^)]*\)\s*────\s*/, '').replace(/^\s+/, '').indexOf('[트리니티봇 · 접수 확인') === 0;
+  const lst = arr => arr.map(e => esc(e.id) + (e.req ? '(' + esc(e.req) + ')' : '') + (isHoldClosed(e) ? ' ⚠보류 중 닫음' : '')).join(' · ');
+  sb.style.cssText = (sc.length || cl.length) ? 'margin:8px 0;padding:8px 12px;border:1px solid #e0c36a;border-radius:8px;background:#fff8e1;font-size:13px;line-height:1.6' : 'display:none';
+  sb.innerHTML = (sc.length ? `<div>🔔 <b>답변이 나갔는데 ${STALE_HOURS}시간 넘게 문의자가 닫지 않은 건 ${sc.length}건</b> — 해결됐을 가능성이 큽니다. 문의자에게 확인하거나 완료로 닫아 주세요.<br><span style="color:#6b5b1a">${lst(sc)}</span></div>` : '')
+    + (cl.length ? `<div>✅ <b>문의자가 직접 닫은 건 ${cl.length}건</b> — 트리니티봇 답변 판정(✏️수정 → 맞음·보완·틀림)이 아직 없습니다.<br><span style="color:#6b5b1a">${lst(cl)}</span></div>` : '');
+  board.innerHTML = '';
+  INQ_COLS.forEach(c => {
+    const items = all.filter(e => (e.status || '접수') === c.key).reverse();   // 최신 위
+    const col = document.createElement('div');
+    col.className = 'col';
+    const scroll = c.key === '완료' ? ' scroll' : '';
+    const viewAll = (c.key === '완료' && items.length) ? `<button class="viewall-btn" type="button">⤢ 전체보기</button>` : '';
+    col.innerHTML = `<h2><span>${c.label}</span><span class="h2-right"><span class="cnt">${items.length}</span>${viewAll}</span></h2>` +
+      `<div class="col-cards${scroll}">${items.map(inqCard).join('') || '<div class="inq-empty">—</div>'}</div>`;
+    board.appendChild(col);
+    const vab = col.querySelector('.viewall-btn');
+    if (vab) vab.addEventListener('click', () => openFullView(`${c.label} — 문의 처리 이력 (${items.length}건)`, items.map(inqCard).join('')));
+  });
+  renderInqBar();
+}
+renderInquiryLog();
+renderBar();   // 문의 수정분(inqOverrides)이 채워진 뒤 저장 버튼 건수를 다시 센다
+// 문의 카드 접기/펴기 + ✏️수정/저장/취소/복원 (이벤트 위임 — #inqboard 요소는 재렌더에도 유지됨)
+document.getElementById('inqboard').addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.editbtn');
+  if (editBtn){ editingInqId = editBtn.dataset.id; renderInquiryLog(); return; }
+  const actBtn = e.target.closest('[data-act]');
+  if (actBtn){
+    const id = actBtn.dataset.id;
+    if (actBtn.dataset.act === 'save'){
+      const form = actBtn.closest('.editform-wrap');
+      const base = inqBaseById[id] || {};
+      const o = {};
+      ['status','type','req','q','a','ref','by','date','botgrade','botgrade_note'].forEach(k => {
+        const el = form.querySelector(`[name="${k}"]`);
+        if (!el) return;                       // 판정 칸은 트리니티봇이 답한 카드에만 있다
+        const val = el.value;
+        if (val !== (base[k] || '')) o[k] = val;
+      });
+      const cbs = form.querySelectorAll('input[name="botgrade_code_cb"]');
+      if (cbs.length){                       // 판정 칸이 있는 카드에만 있다
+        const picked = BOT_CODES.filter(c => Array.from(cbs).some(x => x.value === c && x.checked)).join(',');
+        const before = BOT_CODES.filter(c => _botCodes(base.botgrade_code).includes(c)).join(',');
+        if (picked !== before) o.botgrade_code = picked;
+      }
+      if ('botgrade' in o) o.botgrade_at = _nowStamp();   // 판정 시각 — 뒤에 트리니티봇 답이 더 달리면 장부가 재판정 필요로 표시
+      if (Object.keys(o).length) inqOverrides[id] = o; else delete inqOverrides[id];
+      saveInqOverrides();
+    } else if (actBtn.dataset.act === 'revert'){
+      delete inqOverrides[id]; saveInqOverrides();
+    }
+    // cancel은 override 변경 없이 그대로 편집모드만 종료
+    editingInqId = null; renderInquiryLog();
+    return;
+  }
+  const head = e.target.closest('.inq-head');
+  if (!head) return;
+  if (window.getSelection && String(window.getSelection())) return;  // 드래그 선택 중엔 토글 안 함
+  head.parentElement.classList.toggle('open');
+});
+function renderInqBar(){
+  // ⛔ 문의 전용 편집바는 **그리지 않는다.** 저장 버튼은 맨 위 편집바 하나뿐이고,
+  //    거기서 보드와 문의를 함께 저장한다(saveAll). 버튼이 둘이면 어느 쪽이 무엇을
+  //    저장하는지 헷갈리고, 하나만 눌러 반쪽만 저장되는 사고가 난다.
+  const bar = document.getElementById('inqeditbar');
+  if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+  renderBar();     // 문의 변경 건수를 맨 위 저장 버튼에 반영
+  return;
+  /* eslint-disable no-unreachable */
+  const n = Object.keys(inqOverrides).length;
+  bar.innerHTML =
+    `<span>✏️ 문의 카드 <b>수정</b>→저장 · 변경 <b>${n}건</b></span>` +
+    `<span class="warn-txt">💾 저장은 <b>맨 위 편집바의 「파일에 저장」 버튼 하나</b>로 보드와 함께 처리됩니다.</span>` +
+    `<button id="inqexp"${n?'':' disabled'}>📤 변경분 내보내기(JSON)</button>` +
+    `<button id="inqrst"${n?'':' disabled'}>전체 초기화</button>` +
+    (n ? `<span class="warn-txt">💾 저장은 append-only — 바뀐 필드만 새 줄로 추가돼 다른 세션 기록과 충돌하지 않습니다.</span>`
+       : `<span style="color:#b08968;">(수정하면 여기 버튼이 활성화됩니다)</span>`) +
+    `<span id="inqsaverstat" class="warn-txt" style="flex-basis:100%"></span>`;
+  if (n){
+    renderBar();   // 문의 변경분도 위쪽 저장 버튼에 반영한다
+    _saverRefresh();
+    bar.querySelector('#inqexp').onclick = exportInqJSON;
+    bar.querySelector('#inqrst').onclick = () => {
+      if (confirm('이 브라우저에 저장된 모든 문의 카드 수정을 지우고 기본값(inquiry-log.js 기준)으로 되돌릴까요?')){
+        inqOverrides = {}; saveInqOverrides(); renderInquiryLog();
+      }
+    };
+  }
+}
+function exportInqJSON(){
+  const json = JSON.stringify(inqOverrides, null, 2);
+  const ovl = document.createElement('div');
+  ovl.className = 'ovl';
+  ovl.innerHTML =
+    `<div class="box">` +
+      `<h3>문의 카드 변경분(JSON) — 복사해서 inquiry-log.js 동기화에 사용</h3>` +
+      `<textarea readonly></textarea>` +
+      `<div class="ebtns"><button class="save" id="icp">클립보드 복사</button>` +
+      `<button class="cancel" id="icls">닫기</button></div>` +
+    `</div>`;
+  document.body.appendChild(ovl);
+  const ta = ovl.querySelector('textarea');
+  ta.value = json; ta.focus(); ta.select();
+  ovl.querySelector('#icp').onclick = () => {
+    ta.select();
+    try { navigator.clipboard.writeText(json); } catch(e){ try { document.execCommand('copy'); } catch(_){} }
+    ovl.querySelector('#icp').textContent = '복사됨 ✓';
+  };
+  const close = () => ovl.remove();
+  ovl.querySelector('#icls').onclick = close;
+  ovl.addEventListener('click', (ev) => { if (ev.target === ovl) close(); });
+}
+// ── inquiry-log.js 전용 파일핸들(task-board.html과 별도 IndexedDB 키 — 서로 다른 파일이라 혼동 차단) ──
+const _FS_KEY_INQ='sap-inqlog', _FS_NAME_INQ='inquiry-log.js';
+function _fsOpenInq(){ return new Promise(r=>{ const q=indexedDB.open('inqfs',1); q.onupgradeneeded=()=>q.result.createObjectStore('h'); q.onsuccess=()=>r(q.result); q.onerror=()=>r(null); }); }
+async function _fsLoadInq(){ try{ const db=await _fsOpenInq(); if(!db) return null; return await new Promise(r=>{ const g=db.transaction('h').objectStore('h').get(_FS_KEY_INQ); g.onsuccess=()=>r(g.result||null); g.onerror=()=>r(null); }); }catch(e){ return null; } }
+async function _fsStoreInq(h){ try{ const db=await _fsOpenInq(); if(db) db.transaction('h','readwrite').objectStore('h').put(h,_FS_KEY_INQ); }catch(e){} }
+async function _pickInqFileHandle(){
+  let h = window._fhInq || await _fsLoadInq();
+  if (h && h.name !== _FS_NAME_INQ) h = null;
+  if (h){ try{ const o={mode:'readwrite'}; if(await h.queryPermission(o)!=='granted' && await h.requestPermission(o)!=='granted') h=null; }catch(e){ h=null; } }
+  if (!h){
+    h = await window.showSaveFilePicker({ id:_FS_KEY_INQ, startIn:'documents', suggestedName:_FS_NAME_INQ, types:[{description:'JS', accept:{'text/javascript':['.js']}}] });
+    if (h.name !== _FS_NAME_INQ) _toast('⚠ 선택한 파일명이 '+_FS_NAME_INQ+' 이 아닙니다 — 저장 위치를 확인하세요');
+    await _fsStoreInq(h);
+  }
+  window._fhInq = h; return h;
+}
+// 저장한 변경분을 메모리 로그에도 push — 파일과 같은 상태가 되어 새로고침 없이 화면이 유지된다.
+function _bakeInqOverrides(ids){
+  try{
+    window.INQUIRY_LOG = window.INQUIRY_LOG || [];
+    ids.forEach(id => window.INQUIRY_LOG.push(Object.assign({id}, inqOverrides[id])));
+  }catch(e){}
+}
+// 💾 **하나의 저장 버튼** — 보드(task-board.html)와 문의(inquiry-log.js)를 함께 처리한다.
+//    둘의 저장 방식은 다르다(보드=전체 덮어쓰기 / 문의=append-only). 그래서 합친 것은
+//    **버튼과 순서**이지 쓰기 방식이 아니다. 보드를 먼저 쓰고, 그 다음 문의를 덧붙인다.
+async function saveAll(){
+  const nB = Object.keys(overrides).length;
+  const nI = Object.keys(inqOverrides).length;
+  if (!nB && !nI){ _toast('저장할 변경이 없습니다'); return; }
+  if (nB) await saveToFile();
+  if (nI) await saveInqToFile();
+  renderBar(); renderInqBar();
+}
+
+// 💾 append-only 저장 — 전체 덮어쓰기가 아니라 바뀐 필드만 새 push()줄로 파일 끝에 추가.
+// 동시에 다른 세션·log-inquiry.py가 기록해도 그 줄들은 그대로 보존됨(우리는 마지막에 우리 줄만 얹음).
+async function saveInqToFile(){
+  const ids = Object.keys(inqOverrides);
+  if (!ids.length) return;
+  let appendLines = '';
+  ids.forEach(id => {
+    const o = Object.assign({id}, inqOverrides[id]);
+    appendLines += 'window.INQUIRY_LOG.push(' + JSON.stringify(o) + ');\n';
+  });
+  // ① 저장 서버가 켜져 있으면: 경로를 묻지 않고 inquiry-log.js 에 그대로 append(백업은 서버가 뜬다)
+  {
+    const srv = await _saverSave('/save/inquiry', appendLines);
+    if (srv.ok){
+      _bakeInqOverrides(ids);
+      inqOverrides = {}; saveInqOverrides(); renderInquiryLog(); _paintSaverStat();
+      _toast('inquiry-log.js 에 추가 저장됨 ✓ (저장 서버 · 경로 선택 없음)'); return;
+    }
+    if (srv.refused){ _paintSaverStat(); _toast('⚠ 저장 서버가 거부 — ' + srv.err); return; }
+  }
+  // ② 서버가 꺼져 있을 때만: 기존 브라우저 저장
+  if (window.showSaveFilePicker){
+    try{
+      const h = await _pickInqFileHandle();
+      const f = await h.getFile();
+      const currentText = await f.text();
+      try{ localStorage.setItem('sap-inqlog-lastgood', currentText); }catch(_e){}   // 쓰기 전 최종 안전망(2026-08-24 사고 후 추가)
+      if (!currentText.includes('window.INQUIRY_LOG')){
+        _toast('⚠ 선택한 파일이 inquiry-log.js 형식이 아닙니다 — 저장 중단'); return;
+      }
+      const newText = currentText.replace(/\s*$/, '') + '\n' + appendLines;
+      const w = await h.createWritable({ keepExistingData: true }); await w.write(newText); await w.close();
+      const rf = await h.getFile();
+      if (rf.size !== new Blob([newText]).size){ _toast('⚠ 저장 검증 실패 — 기록된 크기가 다릅니다. 다시 시도하세요'); return; }
+      _bakeInqOverrides(ids);
+      inqOverrides = {}; saveInqOverrides();
+      renderInquiryLog(); _toast('inquiry-log.js에 추가 저장됨 ✓ ('+h.name+') — append-only'); return;
+    }catch(err){
+      if (err.name==='AbortError'){ _toast('⚠ 저장 취소됨 — 파일에 기록되지 않았습니다'); return; }
+      _toast('⚠ 직접 저장 실패('+err.name+') — 변경분(JSON)을 내보내 수동 반영하세요');
+      exportInqJSON();
+      return;
+    }
+  }
+  exportInqJSON();
+}
+</script>
+
+
+
+
+
+
+
+</body></html>

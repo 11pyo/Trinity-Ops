@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 협업 운영 실증지표 — SD 운영</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+         background:#f1f5f9; color:#1e293b; }
+  header { background:#1a2744; color:#fff; padding:18px 24px; }
+  header h1 { margin:0; font-size:19px; }
+  header .sub { font-size:12px; opacity:.82; margin-top:5px; line-height:1.6; }
+  header a { color:#93c5fd; }
+  .wrap { padding:20px 24px 40px; max-width:1180px; }
+  .period { font-size:12px; color:#475569; background:#fff; border:1px solid #e2e8f0;
+            border-radius:8px; padding:8px 12px; margin-bottom:16px; display:inline-block; }
+  .period b { color:#1a2744; }
+  /* KPI 타일 */
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; margin-bottom:22px; }
+  .kpi { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.07);
+         border-top:3px solid #1a2744; }
+  .kpi .v { font-size:30px; font-weight:800; line-height:1.1; color:#0f172a; }
+  .kpi .v small { font-size:15px; font-weight:700; color:#64748b; }
+  .kpi .l { font-size:12px; color:#64748b; margin-top:5px; line-height:1.45; }
+  .kpi.ok   { border-top-color:#16a34a; } .kpi.ok .v { color:#15803d; }
+  .kpi.urg  { border-top-color:#dc2626; } .kpi.urg .v { color:#b91c1c; }
+  .kpi.dev  { border-top-color:#2563eb; } .kpi.dev .v { color:#1d4ed8; }
+  .kpi.ver  { border-top-color:#7c3aed; } .kpi.ver .v { color:#6d28d9; }
+  /* 섹션 */
+  .sec { background:#fff; border-radius:11px; padding:16px 18px; margin-bottom:18px;
+         box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .sec h2 { font-size:14px; margin:0 0 12px; color:#1a2744; display:flex; align-items:center; gap:7px; }
+  .sec h2 small { font-weight:400; color:#94a3b8; font-size:11px; }
+  /* 막대 */
+  .bar-row { display:flex; align-items:center; gap:10px; margin:7px 0; font-size:12px; }
+  .bar-row .name { flex:0 0 130px; color:#475569; text-align:right; }
+  .bar-row .track { flex:1; background:#f1f5f9; border-radius:6px; height:22px; position:relative; overflow:hidden; }
+  .bar-row .fill { height:100%; border-radius:6px; display:flex; align-items:center; padding:0 8px;
+                   color:#fff; font-weight:700; font-size:11px; min-width:24px; transition:width .5s; }
+  .bar-row .cnt { flex:0 0 70px; color:#334155; font-weight:600; }
+  /* 추이 */
+  .trend { display:flex; align-items:flex-end; gap:6px; height:130px; padding-top:10px;
+           border-bottom:2px solid #e2e8f0; overflow-x:auto; }
+  .trend .col { flex:0 0 auto; width:34px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .trend .col .b { width:22px; background:#2563eb; border-radius:4px 4px 0 0; min-height:3px; position:relative; }
+  .trend .col .b span { position:absolute; top:-16px; left:50%; transform:translateX(-50%);
+                        font-size:10px; font-weight:700; color:#1d4ed8; }
+  .trend-x { display:flex; gap:6px; margin-top:5px; overflow-x:auto; }
+  .trend-x .d { flex:0 0 auto; width:34px; text-align:center; font-size:9px; color:#94a3b8; line-height:1.3; }
+  /* 검증 파이프라인 */
+  .pipe { display:flex; align-items:stretch; gap:0; flex-wrap:wrap; }
+  .pipe .step { flex:1; min-width:180px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px;
+                padding:12px 14px; position:relative; margin:4px; }
+  .pipe .step .n { font-size:11px; font-weight:800; color:#fff; background:#7c3aed; border-radius:50%;
+                   width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; }
+  .pipe .step h3 { font-size:13px; margin:8px 0 4px; color:#1a2744; }
+  .pipe .step p { font-size:11.5px; color:#64748b; margin:0; line-height:1.5; }
+  .pipe .step .stat { margin-top:8px; font-size:18px; font-weight:800; color:#6d28d9; }
+  .pipe .step .stat small { font-size:11px; font-weight:600; color:#94a3b8; }
+  /* 성과 사례 표 */
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th, td { border:1px solid #e8edf3; padding:7px 9px; text-align:left; vertical-align:top; line-height:1.55; }
+  th { background:#f1f5f9; color:#334155; font-weight:700; font-size:11px; }
+  td .tag { font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; white-space:nowrap; }
+  .tag.dump { background:#fee2e2; color:#991b1b; }
+  .tag.root { background:#ede9fe; color:#6d28d9; }
+  .tag.dev  { background:#dbeafe; color:#1e40af; }
+  td .code { font-family:ui-monospace,Consolas,monospace; font-size:11px; color:#1a2744; font-weight:700; }
+  td .req  { font-size:10.5px; color:#3730a3; }
+  .foot { font-size:11px; color:#94a3b8; line-height:1.7; margin-top:8px; }
+  .note { font-size:11.5px; color:#3730a3; background:#eef2ff; border:1px solid #c7d2fe;
+          border-radius:8px; padding:9px 12px; margin-bottom:16px; line-height:1.6; }
+</style>
+<style id="oc-console">
+/* Ops Console 공통 색 이름 · 위쪽 메뉴 (정본 templates/ops-console.md, 2026-11-17) */
+:root{--oc-bg:#eef1f5;--oc-panel:#f4f6f9;--oc-card:#ffffff;--oc-ink:#18212c;--oc-sub:#5d6978;--oc-line:#d9dfe6;
+  --oc-pt:#1a6fb5;--oc-pt-ink:#ffffff;--oc-chip:#eef1f5;--oc-warn-bg:#fff4dc;--oc-warn-ink:#7a5200;
+  --oc-good:#1f7a33;--oc-good-bg:#e8f6ea;--oc-bad:#b3261e;--oc-bad-bg:#fdecea;--oc-nav:#18212c;--oc-nav-ink:#e7ecf2;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--oc-bg:#0f141a;--oc-panel:#151b23;--oc-card:#1c242e;--oc-ink:#e7ecf2;--oc-sub:#9aa7b6;--oc-line:#2b3542;
+  --oc-pt:#5b9fe0;--oc-pt-ink:#0b1220;--oc-chip:#232d39;--oc-warn-bg:#3a2e12;--oc-warn-ink:#f3d58a;
+  --oc-good:#6fd19c;--oc-good-bg:#17291f;--oc-bad:#ff8a80;--oc-bad-bg:#3a1d1b;--oc-nav:#0b1016;--oc-nav-ink:#e7ecf2;color-scheme:dark}}
+.oc-nav{display:flex;align-items:center;gap:2px;height:44px;padding:0 10px;background:var(--oc-nav);color:var(--oc-nav-ink);
+  font:13px/1 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;overflow-x:auto;scrollbar-width:none;position:relative;z-index:500}
+.oc-nav b{margin:0 10px 0 4px;white-space:nowrap;font-size:13.5px}
+.oc-nav a{color:inherit;text-decoration:none;padding:8px 10px;border-radius:8px;white-space:nowrap;opacity:.78}
+.oc-nav a:hover{opacity:1;background:rgba(255,255,255,.08)}
+.oc-nav a[aria-current="page"]{opacity:1;font-weight:700;background:rgba(255,255,255,.16)}
+.oc-nav a:focus-visible{outline:2px solid #5b9fe0;outline-offset:-2px;opacity:1}
+</style>
+<style id="oc-ui-base">
+/* SD 화면 공통 기반 (2026-11-17) — 키보드 포커스 표시 · 작은 글씨 하한 11px · 연회색 글씨 대비 보정 · 휴대폰 배치 */
+a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:2px solid #1a6fb5; outline-offset:2px; }
+.trend .col .b span, td .tag, td .req { font-size:11px; }
+.trend-x .d { font-size:11px; color:#64748b; }
+.sec h2 small, .pipe .step .stat small, .foot { color:#64748b; }
+@media (max-width:640px) {
+  header { padding:14px 16px; }
+  .wrap { padding:14px 12px 32px; }
+  table { display:block; overflow-x:auto; }
+}
+</style>
+<style id="oc-console-dark">
+/* 다크 모드 — 화면 고유 색을 Ops Console 색 이름(--oc-*)으로 옮김. 밝은 화면은 그대로 */
+.bar-row .fill[style*="#16a34a"], .bar-row .fill[style*="#f59e0b"], .bar-row .fill[style*="#94a3b8"] { color:#0b1220; }
+.foot { color:var(--oc-sub); }
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+body{background:var(--oc-bg);color:var(--oc-ink)}
+header{background:var(--oc-nav)} header a{color:#93c5fd}
+.period,.kpi,.sec{background:var(--oc-card);border-color:var(--oc-line);box-shadow:none}
+.period{color:var(--oc-sub)} .period b{color:var(--oc-ink)}
+.kpi{border-top-color:var(--oc-sub)} .kpi .v{color:var(--oc-ink)} .kpi .v small,.kpi .l{color:var(--oc-sub)}
+.kpi.ok .v{color:var(--oc-good)} .kpi.urg .v{color:var(--oc-bad)} .kpi.dev .v{color:var(--oc-pt)} .kpi.ver .v{color:#c4b5fd}
+.sec h2,.pipe .step h3{color:var(--oc-ink)}
+.sec h2 small,.foot,.trend-x .d,.pipe .step p,.pipe .step .stat small,.bar-row .name{color:var(--oc-sub)}
+.bar-row .cnt{color:var(--oc-ink)} .bar-row .track{background:var(--oc-chip)}
+.trend{border-bottom-color:var(--oc-line)} .trend .col .b{background:var(--oc-pt)} .trend .col .b span{color:var(--oc-pt)}
+.pipe .step{background:var(--oc-panel);border-color:var(--oc-line)} .pipe .step .stat{color:#c4b5fd}
+th,td{border-color:var(--oc-line)} th{background:var(--oc-panel);color:var(--oc-ink)}
+.tag.dump{background:var(--oc-bad-bg);color:var(--oc-bad)} .tag.root{background:#2a2245;color:#c4b5fd} .tag.dev{background:#16263d;color:#93c5fd}
+td .code{color:var(--oc-ink)} td .req{color:#a5b4fc}
+.note{background:#1e2240;border-color:#3b3f73;color:#c7d2fe}
+td[style*="#cbd5e1"],span[style*="#64748b"]{color:var(--oc-sub)!important}
+}}
+</style>
+</head>
+<body>
+<nav class="oc-nav" aria-label="Ops Console" data-noexport>
+  <b>Ops Console</b>
+  <a href="http://127.0.0.1:5177/" data-hub="/">문의 데스크</a>
+  <a href="../task-dashboard/task-board.html" data-hub="/board">대시보드</a>
+  <a href="../archive.html" data-hub="/archive">아카이브</a>
+  <a href="../erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
+  <a href="../task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
+  <a href="../task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
+</nav>
+<script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
+(function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
+var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+<header>
+  <h1>📈 AI 협업 운영 실증지표</h1>
+  <div class="sub">회사 SAP SD 운영 · 담당자 &nbsp;|&nbsp; 데이터 정본 <code>inquiry-log.js</code> (자동집계 — 로그 갱신 시 자동 반영)<br>
+    ↩ <a href="task-board.html">Task 대시보드로</a> &nbsp;·&nbsp; <a href="../archive.html">지식 아카이브로</a> &nbsp;·&nbsp; <a href="architecture.html">🏛️ 아키텍처 &amp; 벤치마크 보드로</a></div>
+</header>
+<div class="wrap">
+  <div class="note">
+    이 지표는 <b>AI(Claude)와 협업해 처리한 운영 문의·요청</b>의 실증 기록입니다.
+    검증 체계 = <b>① AI 산출물 → ② 운영담당 1차 확인 → ③ 의뢰자 최종 검토·합의</b>.
+    수치는 데모·중복 항목을 제외한 고유 건 기준입니다.
+  </div>
+  <div class="period" id="period">집계 기간 로딩…</div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="sec">
+    <h2>🔎 검증 파이프라인 <small>AI 단독이 아니라 3단 검증을 거친 결과만 실적으로 인정</small></h2>
+    <div class="pipe" id="pipe"></div>
+  </div>
+
+  <div class="sec">
+    <h2>📊 유형별 분포 <small>긴급 / 일반요청 / 단순문의</small></h2>
+    <div id="byType"></div>
+  </div>
+
+  <div class="sec">
+    <h2>🚦 상태별 분포 <small>접수 / 진행중 / 대기 / 완료</small></h2>
+    <div id="byStatus"></div>
+  </div>
+
+  <div class="sec">
+    <h2>📅 일자별 처리 추이 <small>접수 기준</small></h2>
+    <div class="trend" id="trend"></div>
+    <div class="trend-x" id="trendX"></div>
+  </div>
+
+  <div class="sec">
+    <h2>🏆 주요 성과 사례 <small>키워드 자동 추출 — ABAP 덤프 디버깅 · 근본원인 추적 · 개발 전환</small></h2>
+    <table>
+      <thead><tr><th style="width:90px;">유형</th><th style="width:115px;">건</th><th>내용 · 의뢰자</th></tr></thead>
+      <tbody id="highlights"></tbody>
+    </table>
+    <div class="foot" id="hlFoot"></div>
+  </div>
+
+  <div class="foot">
+    ※ 본 페이지는 <code>inquiry-log.js</code>만으로 자동 계산됩니다 — 새 문의가 헬퍼(<code>log-inquiry.py</code>)로 기록되면 새로고침 시 지표가 갱신됩니다.
+    DEV/OPS 프로젝트 카드 통계는 <code>task-board.html</code>의 보드를 참조하세요.<br>
+    회사 기밀(실고객명·실금액·문서번호·자격증명)은 이 공유본 지표에 집계되지 않으며, 사례는 유형·T-Code 수준으로만 표기됩니다.
+  </div>
+</div>
+
+<script src="inquiry-log.js"></script>
+<script>
+(function(){
+  const RAW = window.INQUIRY_LOG || [];
+  // ── id별 병합 (append-only push 로그 → 최신값 머지) ──
+  const map = {};
+  RAW.forEach(e=>{ if(!e || !e.id) return; map[e.id] = Object.assign(map[e.id]||{}, e); });
+  // ── 데모·중복 제외 ──
+  let items = Object.values(map).filter(x =>
+    x.id !== 'INQ-example' && !/^\s*\[중복/.test(x.q || '')
+  );
+
+  const dateOf = x => {
+    if (x.date) return x.date;
+    const m = /INQ-(\d{2})(\d{2})(\d{2})/.exec(x.id);
+    return m ? `20${m[1]}-${m[2]}-${m[3]}` : '';
+  };
+  const typeKey = t => /긴급/.test(t)?'urg' : /단순/.test(t)?'simp' : 'gen';
+
+  const total   = items.length;
+  const done    = items.filter(x => x.status === '완료').length;
+  const urgent  = items.filter(x => /긴급/.test(x.type||'')).length;
+  const withReq = items.filter(x => (x.req||'').trim()).length;
+  const verified= items.filter(x => x.status === '완료' && (x.req||'').trim()).length;
+
+  // 개발 전환 (DEV-### 언급된 건)
+  const devLinked = items.filter(x => /DEV-\d/.test((x.a||'')+(x.q||''))).length;
+
+  // 기간
+  const dates = items.map(dateOf).filter(Boolean).sort();
+  const d0 = dates[0]||'', d1 = dates[dates.length-1]||'';
+  const days = (d0 && d1) ? Math.round((new Date(d1)-new Date(d0))/864e5)+1 : 0;
+
+  document.getElementById('period').innerHTML =
+    `집계 기간 <b>${d0}</b> ~ <b>${d1}</b> (${days}일) · 고유 처리 건 <b>${total}</b>건`;
+
+  // ── KPI 타일 ──
+  const pct = total ? Math.round(done/total*100) : 0;
+  const kpis = [
+    {cls:'',    v:total,                    l:'처리한 고유 문의·요청'},
+    {cls:'ok',  v:pct, suf:'%',             l:`완료 (${done}/${total}건)`},
+    {cls:'urg', v:urgent,                   l:'긴급 문의 대응'},
+    {cls:'dev', v:devLinked,                l:'개발건(DEV) 연계·전환'},
+    {cls:'ver', v:verified,                 l:'의뢰자 검토까지 완료 (3단 검증)'},
+    {cls:'',    v:days?(total/days).toFixed(1):'-', l:'일평균 처리 건수'},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k =>
+    `<div class="kpi ${k.cls}"><div class="v">${k.v}${k.suf?`<small>${k.suf}</small>`:''}</div><div class="l">${k.l}</div></div>`
+  ).join('');
+
+  // ── 검증 파이프라인 ──
+  const pipe = [
+    {n:1, t:'AI 산출물 생성', p:'Claude가 코드·설정 추적, 근본원인·해결안 도출', s:total, sub:'건 전부'},
+    {n:2, t:'운영담당 1차 확인', p:'담당자가 산출물 검토·보정 후 의뢰자에 전달', s:total, sub:'건 전부'},
+    {n:3, t:'의뢰자 최종 검토·합의', p:'요청 부서가 결과 확인·실증 (제3자 검증)', s:verified, sub:`/ ${withReq} 의뢰건`},
+  ];
+  document.getElementById('pipe').innerHTML = pipe.map(s =>
+    `<div class="step"><span class="n">${s.n}</span><h3>${s.t}</h3><p>${s.p}</p>
+     <div class="stat">${s.s}<small> ${s.sub}</small></div></div>`
+  ).join('');
+
+  // ── 막대 헬퍼 ──
+  function bars(el, rows, colorMap){
+    const max = Math.max(1, ...rows.map(r=>r.c));
+    el.innerHTML = rows.map(r =>
+      `<div class="bar-row"><span class="name">${r.name}</span>
+        <span class="track"><span class="fill" style="width:${Math.max(6,r.c/max*100)}%;background:${colorMap[r.key]||'#64748b'}">${r.c?r.c:''}</span></span>
+        <span class="cnt">${r.c}건</span></div>`
+    ).join('');
+  }
+  // 유형
+  const tCount = {urg:0,gen:0,simp:0};
+  items.forEach(x => tCount[typeKey(x.type||'')]++);
+  bars(document.getElementById('byType'), [
+    {key:'urg', name:'긴급 문의',  c:tCount.urg},
+    {key:'gen', name:'일반 요청',  c:tCount.gen},
+    {key:'simp',name:'단순 문의',  c:tCount.simp},
+  ], {urg:'#dc2626', gen:'#2563eb', simp:'#16a34a'});
+
+  // 상태
+  const order = ['접수','진행중','대기','완료'];
+  const sCount = {}; order.forEach(s=>sCount[s]=0);
+  items.forEach(x => { if(sCount[x.status]!==undefined) sCount[x.status]++; });
+  bars(document.getElementById('byStatus'), order.map(s=>({key:s,name:s,c:sCount[s]})),
+    {'접수':'#94a3b8','진행중':'#2563eb','대기':'#f59e0b','완료':'#16a34a'});
+
+  // ── 일자별 추이 ──
+  const dayCount = {};
+  items.forEach(x => { const d=dateOf(x); if(d) dayCount[d]=(dayCount[d]||0)+1; });
+  const dKeys = Object.keys(dayCount).sort();
+  const dMax = Math.max(1, ...Object.values(dayCount));
+  document.getElementById('trend').innerHTML = dKeys.map(d =>
+    `<div class="col"><div class="b" style="height:${dayCount[d]/dMax*100}%"><span>${dayCount[d]}</span></div></div>`
+  ).join('');
+  document.getElementById('trendX').innerHTML = dKeys.map(d => {
+    const [,mm,dd] = d.split('-'); return `<div class="d">${mm}/${dd}</div>`;
+  }).join('');
+
+  // ── 주요 성과 사례 (키워드 자동 추출) ──
+  const rules = [
+    {key:'dump', label:'ABAP 덤프', cls:'dump', re:/덤프|DUMP|CONVT_NO_NUMBER|ASSERTION_FAILED/i},
+    {key:'root', label:'근본원인 추적', cls:'root', re:/근본원인|코드 ?추적|진범|코드근거|분모0/},
+    {key:'dev',  label:'개발 전환', cls:'dev', re:/DEV-\d/},
+  ];
+  const seen = {};
+  const hl = [];
+  items.forEach(x => {
+    const text = (x.a||'')+' '+(x.q||'');
+    for (const r of rules){
+      if (r.re.test(text) && !seen[x.id]){
+        seen[x.id] = true;
+        const short = (x.q||'').replace(/^\[[^\]]*\]\s*/,'').slice(0,72);
+        hl.push({cls:r.cls, label:r.label, id:x.id, q:short, req:(x.req||'').split('(')[0].trim()});
+        break;
+      }
+    }
+  });
+  document.getElementById('highlights').innerHTML = hl.length ? hl.map(h =>
+    `<tr><td><span class="tag ${h.cls}">${h.label}</span></td>
+      <td><span class="code">${h.id.replace('INQ-','')}</span></td>
+      <td>${h.q}…<br><span class="req">의뢰: ${h.req||'-'}</span></td></tr>`
+  ).join('') : `<tr><td colspan="3" style="color:#cbd5e1;text-align:center;">추출된 사례 없음</td></tr>`;
+  document.getElementById('hlFoot').textContent =
+    `총 ${hl.length}건의 임팩트 사례 자동 추출 — ABAP 런타임 덤프 직접 디버깅, 코드·설정 레벨 근본원인 확정, 단순 문의를 개발 과제로 승화한 사례 포함.`;
+
+  // ── 데이터 기준 시각 표기 (자동 폴링 없음 — 새로고침 시 최신 반영) ──
+  // inquiry-log.js가 헬퍼(log-inquiry.py)로 갱신되면(한 건 완료 기록 시), 다음 조회/새로고침에 자동 반영.
+  // task-board.html과 같은 데이터 소스라 항상 동기화. 자동 새로고침은 두지 않는다(불필요한 부하 회피).
+  const pEl = document.getElementById('period');
+  if (pEl) pEl.insertAdjacentHTML('beforeend',
+    ` &nbsp;·&nbsp; <span style="color:#64748b;">조회 ${new Date().toLocaleString('ko-KR',{hour12:false})} · 새로고침 시 최신 반영</span>`);
+})();
+</script>
+</body>
+</html>

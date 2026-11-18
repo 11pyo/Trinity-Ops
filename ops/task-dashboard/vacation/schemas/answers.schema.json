@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "트리니티봇 답변 규격",
+  "type": "object",
+  "required": [
+    "answers"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "verdict",
+          "public",
+          "note"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^INQ-[0-9A-Za-z-]+$",
+            "description": "감시자가 넘겨준 문의 번호 — 목록에 없는 id 는 버려진다"
+          },
+          "verdict": {
+            "enum": [
+              "answer",
+              "hold",
+              "escalate",
+              "dev"
+            ],
+            "description": "answer=확정 답변 · dev=개발요청 평가 · escalate=직접 처리 불가 · hold=판단 유보"
+          },
+          "public": {
+            "type": "string",
+            "description": "현업이 읽을 본문. 표기·정정문구·시각은 게이트가 붙이므로 쓰지 않는다. 사내 식별자(카드·문의·SR 번호) 금지"
+          },
+          "note": {
+            "type": "string",
+            "description": "담당자용 내부 메모 — 현업에게 나가지 않는다"
+          },
+          "ref": {
+            "type": "string",
+            "description": "아카이브 앵커(#...) · 없으면 빈 문자열"
+          }
+        }
+      }
+    }
+  }
+}

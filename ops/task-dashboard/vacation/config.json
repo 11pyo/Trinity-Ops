@@ -1,0 +1,73 @@
+{
+  "ai_answer_status": "대기",
+  "gemini_model": "gemini-3.8-flash",
+  "runtime_dir": "",
+  "heartbeat_path": "",
+  "lock_path": "",
+  "server_log_dir": "",
+  "debounce_sec": 45,
+  "reconcile_sec": 600,
+  "max_batch": 5,
+  "max_runs_per_day": 40,
+  "max_attempts": 3,
+  "claude_timeout_sec": 900,
+  "auth_canary_hours": 4,
+  "prefetch_enabled": false,
+  "second_pass_enabled": false,
+  "owner_test_req": "운영담당·영업지원팀",
+  "test_reqs": [
+    "대화검증·검증용",
+    "무인검증·검증용",
+    "베타점검·트리니티봇점검"
+  ],
+  "reason_codes": [
+    "사실오류",
+    "위험안내",
+    "기존기능놓침",
+    "용어노출",
+    "과잉보류",
+    "누락",
+    "가독성",
+    "기타"
+  ],
+  "stages": [
+    {
+      "no": 1,
+      "name": "1차 안내",
+      "grants": "읽기 · 개발계 120 조회 · 제한된 웹 조사 · 답은 대기(닫는 건 사람)"
+    },
+    {
+      "no": 2,
+      "name": "단순문의 스스로 완료",
+      "types": [
+        "단순문의"
+      ],
+      "verdicts": [
+        "answer"
+      ],
+      "min_graded": 20,
+      "min_accuracy": 0.9,
+      "max_wrong": 0,
+      "grants": "단순문의 유형은 트리니티봇 답을 완료로 닫는다(나머지 유형은 대기)"
+    },
+    {
+      "no": 3,
+      "name": "초안 작성",
+      "verdicts": [
+        "dev"
+      ],
+      "min_graded": 50,
+      "min_accuracy": 0.95,
+      "max_wrong": 0,
+      "grants": "개발 요청의 정보처리의뢰서 초안 · 아카이브 기재 초안(담당자 승인 대기)"
+    },
+    {
+      "no": 4,
+      "name": "운영계 조회 신청 근거",
+      "min_graded": 100,
+      "min_accuracy": 0.95,
+      "max_wrong": 0,
+      "grants": "운영계(PRD) 조회 권한을 회사에 신청할 근거 자료 — 승인은 회사 절차"
+    }
+  ]
+}

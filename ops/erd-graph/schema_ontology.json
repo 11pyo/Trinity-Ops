@@ -1,0 +1,534 @@
+{
+ "meta": {
+  "version": "1.0",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "source_system": "SAMPLE synthetic ontology",
+  "sync_hash": "sample",
+  "counts": {
+   "tables": 8,
+   "core_tables": 8,
+   "programs": 1,
+   "functions": 0,
+   "fugrs": 0,
+   "tcodes": 4,
+   "articles": 2,
+   "dev_cards": 0,
+   "edges": 23,
+   "table_rels": 7
+  }
+ },
+ "domains": {
+  "O2C_QUOTE_SO": {
+   "label": "견적·판매오더",
+   "color": "#38bdf8",
+   "order": 1
+  },
+  "DELIVERY_MM": {
+   "label": "납품·출하·재고",
+   "color": "#34d399",
+   "order": 2
+  },
+  "BILLING_TAX_FI": {
+   "label": "청구·회계",
+   "color": "#f59e0b",
+   "order": 3
+  },
+  "CREDIT_FSCM": {
+   "label": "여신",
+   "color": "#f87171",
+   "order": 4
+  },
+  "OTHER_ZSD": {
+   "label": "기타",
+   "color": "#94a3b8",
+   "order": 9
+  }
+ },
+ "nodes": {
+  "TABL:VBAK": {
+   "id": "TABL:VBAK",
+   "type": "TABL",
+   "name": "VBAK",
+   "desc": "판매 문서 헤더",
+   "domain": "O2C_QUOTE_SO",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    }
+   ]
+  },
+  "TABL:VBAP": {
+   "id": "TABL:VBAP",
+   "type": "TABL",
+   "name": "VBAP",
+   "desc": "판매 문서 품목",
+   "domain": "O2C_QUOTE_SO",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN",
+    "POSNR"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    },
+    {
+     "field": "POSNR",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "POSNR"
+    }
+   ]
+  },
+  "TABL:LIKP": {
+   "id": "TABL:LIKP",
+   "type": "TABL",
+   "name": "LIKP",
+   "desc": "납품 헤더",
+   "domain": "DELIVERY_MM",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    }
+   ]
+  },
+  "TABL:LIPS": {
+   "id": "TABL:LIPS",
+   "type": "TABL",
+   "name": "LIPS",
+   "desc": "납품 품목",
+   "domain": "DELIVERY_MM",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN",
+    "POSNR"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    },
+    {
+     "field": "POSNR",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "POSNR"
+    }
+   ]
+  },
+  "TABL:VBRK": {
+   "id": "TABL:VBRK",
+   "type": "TABL",
+   "name": "VBRK",
+   "desc": "청구 문서 헤더",
+   "domain": "BILLING_TAX_FI",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    }
+   ]
+  },
+  "TABL:VBRP": {
+   "id": "TABL:VBRP",
+   "type": "TABL",
+   "name": "VBRP",
+   "desc": "청구 문서 품목",
+   "domain": "BILLING_TAX_FI",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN",
+    "POSNR"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    },
+    {
+     "field": "POSNR",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "POSNR"
+    }
+   ]
+  },
+  "TABL:KNA1": {
+   "id": "TABL:KNA1",
+   "type": "TABL",
+   "name": "KNA1",
+   "desc": "고객 마스터",
+   "domain": "CREDIT_FSCM",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "KUNNR"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "KUNNR",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "KUNNR"
+    }
+   ]
+  },
+  "TABL:ZXX_T0001": {
+   "id": "TABL:ZXX_T0001",
+   "type": "TABL",
+   "name": "ZXX_T0001",
+   "desc": "SAMPLE 사용자 정의 승인 이력",
+   "domain": "O2C_QUOTE_SO",
+   "core": true,
+   "tabclass": "TRANSP",
+   "pk": [
+    "MANDT",
+    "VBELN",
+    "SEQNO"
+   ],
+   "fields": [
+    {
+     "field": "MANDT",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "MANDT"
+    },
+    {
+     "field": "VBELN",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "VBELN"
+    },
+    {
+     "field": "SEQNO",
+     "pk": true,
+     "datatype": "CHAR",
+     "leng": 10,
+     "label": "SEQNO"
+    }
+   ]
+  },
+  "TCODE:VA01": {
+   "id": "TCODE:VA01",
+   "type": "TCODE",
+   "name": "VA01",
+   "desc": "판매오더 생성",
+   "domain": "O2C_QUOTE_SO",
+   "core": true
+  },
+  "TCODE:VL01N": {
+   "id": "TCODE:VL01N",
+   "type": "TCODE",
+   "name": "VL01N",
+   "desc": "출하 생성",
+   "domain": "DELIVERY_MM",
+   "core": true
+  },
+  "TCODE:VF01": {
+   "id": "TCODE:VF01",
+   "type": "TCODE",
+   "name": "VF01",
+   "desc": "청구 생성",
+   "domain": "BILLING_TAX_FI",
+   "core": true
+  },
+  "TCODE:VKM1": {
+   "id": "TCODE:VKM1",
+   "type": "TCODE",
+   "name": "VKM1",
+   "desc": "보류된 SD 문서",
+   "domain": "CREDIT_FSCM",
+   "core": true
+  },
+  "PROG:ZXX_REPORT01": {
+   "id": "PROG:ZXX_REPORT01",
+   "type": "PROG",
+   "name": "ZXX_REPORT01",
+   "desc": "SAMPLE 출하 지연 리포트",
+   "domain": "DELIVERY_MM",
+   "core": true
+  },
+  "ART:sample-order-flow": {
+   "id": "ART:sample-order-flow",
+   "type": "ART",
+   "name": "sample-order-flow",
+   "desc": "[프로세스] 판매오더 → 출하 → 청구 흐름 (SAMPLE)",
+   "domain": "O2C_QUOTE_SO",
+   "core": true,
+   "article_id": "sample-order-flow",
+   "path": "articles/02_process/sample-order-flow.md"
+  },
+  "ART:sample-credit-block": {
+   "id": "ART:sample-credit-block",
+   "type": "ART",
+   "name": "sample-credit-block",
+   "desc": "[트러블슈팅] 여신 보류 (SAMPLE)",
+   "domain": "CREDIT_FSCM",
+   "core": true,
+   "article_id": "sample-credit-block",
+   "path": "articles/04_troubleshoot/sample-credit-block.md"
+  }
+ },
+ "edges": [
+  {
+   "src": "TABL:VBAK",
+   "rel": "TABLE_REL",
+   "dst": "TABL:VBAP",
+   "source": "curated",
+   "join": "VBELN",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:LIKP",
+   "rel": "TABLE_REL",
+   "dst": "TABL:LIPS",
+   "source": "curated",
+   "join": "VBELN",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:VBRK",
+   "rel": "TABLE_REL",
+   "dst": "TABL:VBRP",
+   "source": "curated",
+   "join": "VBELN",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:KNA1",
+   "rel": "TABLE_REL",
+   "dst": "TABL:VBAK",
+   "source": "curated",
+   "join": "KUNNR",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:VBAP",
+   "rel": "TABLE_REL",
+   "dst": "TABL:LIPS",
+   "source": "curated",
+   "join": "VGBEL/VGPOS",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:LIPS",
+   "rel": "TABLE_REL",
+   "dst": "TABL:VBRP",
+   "source": "curated",
+   "join": "VGBEL/VGPOS",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TABL:VBAK",
+   "rel": "TABLE_REL",
+   "dst": "TABL:ZXX_T0001",
+   "source": "curated",
+   "join": "VBELN",
+   "card": "1:N",
+   "label": "SAMPLE 관계"
+  },
+  {
+   "src": "TCODE:VA01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:VBAK",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VA01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:VBAP",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VL01N",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:LIKP",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VL01N",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:LIPS",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VF01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:VBRK",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VF01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:VBRP",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VKM1",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:VBAK",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VKM1",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:KNA1",
+   "source": "curated"
+  },
+  {
+   "src": "TCODE:VA01",
+   "rel": "RUNS_PROG",
+   "dst": "PROG:ZXX_REPORT01",
+   "source": "curated"
+  },
+  {
+   "src": "PROG:ZXX_REPORT01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:LIKP",
+   "source": "curated"
+  },
+  {
+   "src": "PROG:ZXX_REPORT01",
+   "rel": "READS_WRITES_TABLE",
+   "dst": "TABL:LIPS",
+   "source": "curated"
+  },
+  {
+   "src": "TABL:VBAK",
+   "rel": "DOCUMENTED_IN",
+   "dst": "ART:sample-order-flow",
+   "source": "articles"
+  },
+  {
+   "src": "TABL:LIKP",
+   "rel": "DOCUMENTED_IN",
+   "dst": "ART:sample-order-flow",
+   "source": "articles"
+  },
+  {
+   "src": "TABL:VBRK",
+   "rel": "DOCUMENTED_IN",
+   "dst": "ART:sample-order-flow",
+   "source": "articles"
+  },
+  {
+   "src": "TABL:KNA1",
+   "rel": "DOCUMENTED_IN",
+   "dst": "ART:sample-credit-block",
+   "source": "articles"
+  },
+  {
+   "src": "TCODE:VKM1",
+   "rel": "DOCUMENTED_IN",
+   "dst": "ART:sample-credit-block",
+   "source": "articles"
+  }
+ ]
+}

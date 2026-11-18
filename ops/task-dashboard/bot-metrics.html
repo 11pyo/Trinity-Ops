@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>봇 지표 — 문의 응대 품질</title>
+<style>
+  :root { --ink:#1e293b; --mute:#64748b; --line:#e2e8f0; --card:#fff; --bg:#f1f5f9; --navy:#1a2744;
+          --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --pend:#cbd5e1; --blue:#2563eb; --violet:#7c3aed; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--navy); color:#fff; padding:18px 24px; }
+  header h1 { margin:0; font-size:19px; }
+  header .sub { font-size:12px; opacity:.85; margin-top:5px; line-height:1.6; }
+  .wrap { padding:20px 24px 44px; max-width:1180px; }
+  .notice { font-size:12.5px; border-radius:9px; padding:10px 14px; margin-bottom:14px; line-height:1.6; }
+  .notice.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .notice.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(178px,1fr)); gap:12px; margin-bottom:20px; }
+  .kpi { background:var(--card); border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.07); border-top:3px solid var(--navy); }
+  .kpi .v { font-size:29px; font-weight:800; line-height:1.1; color:#0f172a; }
+  .kpi .v small { font-size:14px; font-weight:700; color:var(--mute); }
+  .kpi .l { font-size:12px; color:var(--mute); margin-top:5px; line-height:1.45; }
+  .kpi.ok { border-top-color:var(--ok); } .kpi.ok .v { color:#15803d; }
+  .kpi.bad { border-top-color:var(--bad); } .kpi.bad .v { color:#b91c1c; }
+  .kpi.blue { border-top-color:var(--blue); } .kpi.blue .v { color:#1d4ed8; }
+  .kpi.vio { border-top-color:var(--violet); } .kpi.vio .v { color:#6d28d9; }
+  .sec { background:var(--card); border-radius:11px; padding:16px 18px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .sec h2 { font-size:14px; margin:0 0 4px; color:var(--navy); }
+  .sec .hint { font-size:11.5px; color:var(--mute); margin:0 0 12px; line-height:1.55; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  th { text-align:left; font-size:11px; color:var(--mute); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  td { padding:8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  td small { color:var(--mute); }
+  .stack { display:flex; height:14px; min-width:140px; border-radius:7px; overflow:hidden; background:#f1f5f9; }
+  .stack i { display:block; height:100%; }
+  .stack .ok { background:var(--ok); } .stack .warn { background:var(--warn); } .stack .bad { background:var(--bad); } .stack .pend { background:var(--pend); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--mute); margin:0 0 10px; }
+  .legend b { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; border-radius:10px; padding:2px 9px; }
+  .badge.ok { background:#dcfce7; color:#166534; } .badge.prog { background:#e0e7ff; color:#3730a3; }
+  .badge.cur { background:var(--navy); color:#fff; } .badge.test { background:#f1f5f9; color:var(--mute); }
+  .badge.stale { background:#fef3c7; color:#92400e; }
+  .meter { position:relative; height:10px; background:#eef2f7; border-radius:6px; min-width:110px; }
+  .meter i { position:absolute; left:0; top:0; height:100%; border-radius:6px; background:var(--blue); }
+  .meter.done i { background:var(--ok); }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:18px; }
+  .weeks { display:flex; align-items:flex-end; gap:12px; height:150px; padding-top:18px; border-bottom:2px solid var(--line); overflow-x:auto; }
+  .weeks .w { flex:0 0 auto; width:54px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .weeks .w .col { width:30px; display:flex; flex-direction:column-reverse; border-radius:4px 4px 0 0; position:relative; }
+  .weeks .w .col i { display:block; width:100%; }
+  .weeks .w .col em { position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-style:normal; font-size:10.5px; font-weight:700; color:var(--navy); }
+  .weeks .w .col i.ok { background:var(--ok); } .weeks .w .col i.warn { background:var(--warn); }
+  .weeks .w .col i.bad { background:var(--bad); } .weeks .w .col i.pend { background:var(--pend); }
+  .weeks-x { display:flex; gap:12px; margin-top:5px; overflow-x:auto; }
+  .weeks-x div { flex:0 0 auto; width:54px; text-align:center; font-size:10px; color:var(--mute); line-height:1.35; }
+  .bars .row { display:flex; align-items:center; gap:10px; margin:6px 0; font-size:12px; }
+  .bars .name { flex:0 0 120px; text-align:right; color:#475569; }
+  .bars .track { flex:1; background:#f1f5f9; border-radius:6px; height:20px; overflow:hidden; }
+  .bars .fill { height:100%; background:var(--violet); color:#fff; font-weight:700; font-size:11px; padding:0 8px; display:flex; align-items:center; min-width:22px; }
+  .bars .cnt { flex:0 0 40px; font-weight:700; color:#334155; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+  .tile { background:#f8fafc; border:1px solid var(--line); border-radius:9px; padding:10px 12px; }
+  .tile b { display:block; font-size:18px; color:var(--navy); }
+  .tile span { font-size:11.5px; color:var(--mute); }
+  .tile.hot b { color:var(--bad); }
+  details { font-size:12.5px; line-height:1.7; color:#334155; }
+  details summary { cursor:pointer; font-weight:700; color:var(--navy); }
+  details ul { margin:6px 0 0; padding-left:20px; }
+  .empty { background:#fff; border-radius:11px; padding:30px; text-align:center; color:var(--mute); line-height:1.8; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .empty code, code { background:#f1f5f9; padding:1px 6px; border-radius:5px; font-size:12px; }
+  .foot { font-size:11.5px; color:var(--mute); margin-top:8px; line-height:1.7; }
+</style>
+<style id="oc-console">
+/* Ops Console 공통 색 이름 · 위쪽 메뉴 (정본 templates/ops-console.md, 2026-11-17) */
+:root{--oc-bg:#eef1f5;--oc-panel:#f4f6f9;--oc-card:#ffffff;--oc-ink:#18212c;--oc-sub:#5d6978;--oc-line:#d9dfe6;
+  --oc-pt:#1a6fb5;--oc-pt-ink:#ffffff;--oc-chip:#eef1f5;--oc-warn-bg:#fff4dc;--oc-warn-ink:#7a5200;
+  --oc-good:#1f7a33;--oc-good-bg:#e8f6ea;--oc-bad:#b3261e;--oc-bad-bg:#fdecea;--oc-nav:#18212c;--oc-nav-ink:#e7ecf2;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--oc-bg:#0f141a;--oc-panel:#151b23;--oc-card:#1c242e;--oc-ink:#e7ecf2;--oc-sub:#9aa7b6;--oc-line:#2b3542;
+  --oc-pt:#5b9fe0;--oc-pt-ink:#0b1220;--oc-chip:#232d39;--oc-warn-bg:#3a2e12;--oc-warn-ink:#f3d58a;
+  --oc-good:#6fd19c;--oc-good-bg:#17291f;--oc-bad:#ff8a80;--oc-bad-bg:#3a1d1b;--oc-nav:#0b1016;--oc-nav-ink:#e7ecf2;color-scheme:dark}}
+.oc-nav{display:flex;align-items:center;gap:2px;height:44px;padding:0 10px;background:var(--oc-nav);color:var(--oc-nav-ink);
+  font:13px/1 "Malgun Gothic","맑은 고딕",system-ui,sans-serif;overflow-x:auto;scrollbar-width:none;position:relative;z-index:500}
+.oc-nav b{margin:0 10px 0 4px;white-space:nowrap;font-size:13.5px}
+.oc-nav a{color:inherit;text-decoration:none;padding:8px 10px;border-radius:8px;white-space:nowrap;opacity:.78}
+.oc-nav a:hover{opacity:1;background:rgba(255,255,255,.08)}
+.oc-nav a[aria-current="page"]{opacity:1;font-weight:700;background:rgba(255,255,255,.16)}
+.oc-nav a:focus-visible{outline:2px solid #5b9fe0;outline-offset:-2px;opacity:1}
+</style>
+<style id="oc-ui-base">
+/* SD 화면 공통 기반 (2026-11-17) — 키보드 포커스 표시 · 작은 글씨 하한 11px · 휴대폰 배치 */
+a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline:2px solid #1a6fb5; outline-offset:2px; }
+.weeks .w .col em, .weeks-x div { font-size:11px; }
+@media (max-width:640px) {
+  header { padding:14px 16px; }
+  .wrap { padding:14px 12px 32px; }
+  .cols { grid-template-columns:minmax(0,1fr); }
+  table { display:block; overflow-x:auto; }
+}
+</style>
+<style id="oc-console-dark">
+/* 다크 모드 — 화면 고유 색을 Ops Console 색 이름(--oc-*)으로 옮김. 밝은 화면은 연회색 글씨만 콘솔 색으로(대비 4.5:1 확보) */
+:root{--mute:var(--oc-sub)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+--ink:var(--oc-ink);--mute:var(--oc-sub);--line:var(--oc-line);--card:var(--oc-card);--bg:var(--oc-bg);--navy:var(--oc-ink);
+  --ok:#3fb96b;--warn:#e0a030;--bad:#ef6b62;--pend:#4a5563;--blue:var(--oc-pt);--violet:#9b7be8}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+header{background:var(--oc-nav)}
+.notice.warn{background:var(--oc-warn-bg);border-color:#6b5520;color:var(--oc-warn-ink)}
+.notice.info{background:#16263d;border-color:#2c4a73;color:#bcd6f5}
+.kpi{box-shadow:none} .kpi .v{color:var(--oc-ink)}
+.kpi.ok .v{color:var(--oc-good)} .kpi.bad .v{color:var(--oc-bad)} .kpi.blue .v{color:var(--oc-pt)} .kpi.vio .v{color:#c4b5fd}
+.sec,.empty{box-shadow:none} .empty{background:var(--oc-card)}
+td{border-bottom-color:var(--oc-line)}
+.stack,.bars .track{background:var(--oc-chip)} .meter{background:var(--oc-chip)}
+.badge.ok{background:var(--oc-good-bg);color:var(--oc-good)} .badge.prog{background:#232a4a;color:#c7d2fe}
+.badge.cur{background:var(--oc-pt);color:var(--oc-pt-ink)} .badge.test{background:var(--oc-chip);color:var(--oc-sub)}
+.badge.stale{background:var(--oc-warn-bg);color:var(--oc-warn-ink)}
+.bars .name{color:var(--oc-sub)} .bars .cnt{color:var(--oc-ink)} .bars .fill{color:#0b1220}
+.tile{background:var(--oc-panel)} .tile.hot b{color:var(--oc-bad)}
+details{color:var(--oc-ink)}
+.empty code,code{background:var(--oc-chip);color:var(--oc-ink)}
+}}
+</style>
+</head>
+<body>
+<nav class="oc-nav" aria-label="Ops Console" data-noexport>
+  <b>Ops Console</b>
+  <a href="http://127.0.0.1:5177/" data-hub="/">문의 데스크</a>
+  <a href="../task-dashboard/task-board.html" data-hub="/board">대시보드</a>
+  <a href="../archive.html" data-hub="/archive">아카이브</a>
+  <a href="../erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
+  <a href="../task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
+  <a href="../task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
+</nav>
+<script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
+(function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
+var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+<header>
+  <h1>봇 지표 — 문의 응대 품질</h1>
+  <div class="sub" id="sub">담당자 부재중 문의를 1차 응대하는 트리니티봇이 「잘하고 있는가」를 재는 화면입니다 · 현업 문의만 집계(시험 문의 제외) · 맞음 · 보완 · 틀림 판정은 담당자가 합니다</div>
+</header>
+<div class="wrap" id="app"></div>
+
+<script src="../../.runtime/_vacation-runtime/bot-metrics-data.js"></script>
+<script>
+(function () {
+  'use strict';
+  var D = window.TRINITYBOT_METRICS;
+  var app = document.getElementById('app');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function pct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+  function dur(s) {
+    if (s == null) return '—';
+    if (s < 90) return Math.round(s) + '초';
+    return s < 5400 ? (s / 60).toFixed(1) + '분' : (s / 3600).toFixed(1) + '시간';
+  }
+  function accCell(c) {
+    if (!c || c.accuracy == null) return '—';
+    return '<b>' + pct(c.accuracy) + '</b> <small>(하한 ' + pct(c.accuracy_low) + ')</small>';
+  }
+  function stack(c) {
+    var t = c.answered || 0;
+    if (!t) return '<div class="stack"></div>';
+    var seg = [['ok', c['맞음'], '맞음'], ['warn', c['보완'], '보완'], ['bad', c['틀림'], '틀림'], ['pend', c.ungraded, '판정 전']];
+    var title = seg.map(function (s) { return s[2] + ' ' + s[1]; }).join(' · ');
+    return '<div class="stack" title="' + esc(title) + '">' + seg.map(function (s) {
+      return s[1] ? '<i class="' + s[0] + '" style="width:' + (s[1] / t * 100).toFixed(2) + '%"></i>' : '';
+    }).join('') + '</div>';
+  }
+  var LEGEND = '<div class="legend"><span><b style="background:var(--ok)"></b>맞음</span><span><b style="background:var(--warn)"></b>보완</span>' +
+    '<span><b style="background:var(--bad)"></b>틀림</span><span><b style="background:var(--pend)"></b>판정 전</span></div>';
+
+  // 데이터 파일은 손으로 고칠 수 있다 — 숫자 자리에는 숫자만 들어가게 읽는 즉시 걸러 낸다(HTML 조각이 숫자 자리로 끼어들지 못하게).
+  function cnt(x) { var n = Number(x); return (x === null || x === undefined || x === '' || !isFinite(n)) ? 0 : n; }
+  function num(x) { var n = Number(x); return (x === null || x === undefined || x === '' || !isFinite(n)) ? null : n; }
+  function fixCount(c) {
+    if (!c || typeof c !== 'object') return c;
+    ['answered', 'graded', 'ungraded', 'stale', '맞음', '보완', '틀림'].forEach(function (k) { c[k] = cnt(c[k]); });
+    ['accuracy', 'accuracy_low', 'usable', 'usable_low'].forEach(function (k) { c[k] = num(c[k]); });
+    return c;
+  }
+  function fixLat(v) { v = v || {}; v.n = cnt(v.n); v.median = num(v.median); v.p90 = num(v.p90); return v; }
+  function normalize(D) {
+    fixCount(D.real); fixCount(D.test); fixCount(D.manual);
+    ['by_verdict', 'by_model', 'by_type', 'by_role', 'by_week'].forEach(function (k) {
+      var d = D[k] || {}; Object.keys(d).forEach(function (kk) { fixCount(d[kk]); });
+    });
+    D.latency = fixLat(D.latency);
+    var lm = D.latency_by_model || {}; Object.keys(lm).forEach(function (k) { lm[k] = fixLat(lm[k]); });
+    var codes = D.codes || {}; Object.keys(codes).forEach(function (k) { codes[k] = cnt(codes[k]); });
+    var P = D.prog;
+    if (P) {
+      P.current = cnt(P.current); P.graded = cnt(P.graded); P.accuracy = num(P.accuracy);
+      (P.stages || []).forEach(function (x) {
+        ['no', 'need', 'max_wrong', 'wrong_recent', 'graded', 'need_n0'].forEach(function (k) { x[k] = cnt(x[k]); });
+        ['min_acc', 'accuracy', 'low'].forEach(function (k) { x[k] = num(x[k]); });
+        x.met = !!x.met;
+        x.has_cond = (x.has_cond === undefined) ? !!x.need : !!x.has_cond;
+      });
+      if (P.next) { P.next.no = cnt(P.next.no); P.next.graded = cnt(P.next.graded); P.next.need = cnt(P.next.need); }
+    }
+    var O = D.ops;
+    if (O) {
+      ['runs', 'fail_total', 'card_leak_blocked', 'schema_problem', 'failover', 'denials', 'salvaged', 'cost_usd'].forEach(function (k) { O[k] = cnt(O[k]); });
+      var f = O.fail || {}; Object.keys(f).forEach(function (k) { f[k] = cnt(f[k]); });
+    }
+    (D.replay || []).forEach(function (h) {
+      ['n_verified', 'n_all'].forEach(function (k) { h[k] = cnt(h[k]); });
+      ['n_hold', 'no_answer', 'run_failed', 'critical'].forEach(function (k) { if (h[k] !== undefined && h[k] !== null) h[k] = cnt(h[k]); });
+      ['mean_verified', 'mean_all', 'mean_answered'].forEach(function (k) { h[k] = num(h[k]); });
+    });
+    return D;
+  }
+
+  if (!D) {
+    app.innerHTML = '<div class="empty"><b>지표 데이터가 아직 없습니다.</b><br>제어판(dashboard-panel)의 <code>📊 지표</code> 버튼을 누르면 장부를 새로 만들면서 이 화면을 엽니다.<br>' +
+      '직접 만들려면 <code>python task-dashboard/vacation/ledger.py --page</code></div>';
+    return;
+  }
+
+  normalize(D);
+  var R = D.real || {}, P = D.prog, L = D.latency || {}, O = D.ops;
+  var html = [];
+
+  // 데이터가 낡았으면 알린다
+  var gen = D.generated || '';
+  try {
+    var age = (Date.now() - new Date(gen.replace(' ', 'T')).getTime()) / 86400000;
+    document.getElementById('sub').textContent += ' · 데이터 ' + gen;
+    if (age > 1) html.push('<div class="notice info">이 데이터는 ' + Math.floor(age) + '일 전(' + esc(gen) + ') 것입니다. 제어판 <b>📊 지표</b> 버튼을 누르면 새로 만듭니다.</div>');
+  } catch (e) { /* 시각 해석 실패는 무시 */ }
+
+  if ((R.graded || 0) < 30) {
+    html.push('<div class="notice warn"><b>표본이 작아 통계로 보기 어렵습니다</b> — 현업 문의 판정 ' + (R.graded || 0) + '건. ' +
+      '전부 맞아도 1건이면 95% 하한이 21%입니다. 아래 수치는 「지금까지 이랬다」이지 「앞으로도 그렇다」가 아닙니다. ' +
+      '재생 평가(오프라인)가 표본이 쌓이는 동안의 근거를 보태 줍니다.</div>');
+  }
+
+  // KPI
+  var nx = P && P.next;
+  html.push('<div class="kpis">' +
+    '<div class="kpi blue"><div class="v">' + (R.answered || 0) + '</div><div class="l">트리니티봇이 답한 현업 문의<br>(시험 ' + ((D.test || {}).answered || 0) + '건 별도)</div></div>' +
+    '<div class="kpi"><div class="v">' + (R.graded || 0) + '<small> / ' + (R.answered || 0) + '</small></div><div class="l">담당자 판정 완료<br>판정 전 ' + (R.ungraded || 0) + (R.stale ? ' · 재판정 ' + R.stale : '') + '건</div></div>' +
+    '<div class="kpi ok"><div class="v">' + pct(R.accuracy) + '</div><div class="l">정확도(맞음 ÷ 판정)<br>95% 하한 <b>' + pct(R.accuracy_low) + '</b></div></div>' +
+    '<div class="kpi ok"><div class="v">' + pct(R.usable) + '</div><div class="l">쓸 만한 답(맞음+보완)<br>95% 하한 <b>' + pct(R.usable_low) + '</b></div></div>' +
+    '<div class="kpi vio"><div class="v">' + dur(L.median) + '</div><div class="l">처리 시간 중앙값(접수 확인 → 첫 답)<br>90% ' + dur(L.p90) + ' · ' + (L.n || 0) + '건</div></div>' +
+    (P ? '<div class="kpi"><div class="v">' + P.current + '<small>단계</small></div><div class="l">지금 권한 단계' +
+      (nx ? '<br>다음 ' + nx.no + '단계까지 판정 ' + nx.graded + '/' + nx.need : '<br>마지막 단계') + '</div></div>' : '') +
+    '</div>');
+
+  // 권한 확대 단계
+  if (P) {
+    var rowsS = P.stages.map(function (x) {
+      var ratio = x.need ? Math.min(1, x.graded / x.need) : 1;
+      var meter = x.need ? ('<div class="meter' + (x.met ? ' done' : '') + '"><i style="width:' + (ratio * 100).toFixed(1) + '%"></i></div><small>' + x.graded + '/' + x.need + '</small>') :
+        (x.has_cond ? '<small>' + x.graded + '건</small>' : '<small>조건 없음</small>');
+      var cond;
+      if (!x.has_cond) { cond = '처음부터(조건 없음)'; }
+      else {
+        var parts = [];
+        if (x.need) parts.push('판정 ' + x.need + '건 이상');
+        if (x.min_acc) parts.push('정확도 ' + pct(x.min_acc) + ' 이상');
+        parts.push(x.need ? ('최근 ' + x.need + '건 중 틀림 ' + x.max_wrong + '건 이하') : ('틀림 ' + x.max_wrong + '건 이하'));
+        cond = parts.join(' · ');
+      }
+      var st = x.met ? '<span class="badge ok">✅ 충족</span>' : '<span class="badge prog">진행 중</span>';
+      if (x.no === P.current) st += ' <span class="badge cur">지금</span>';
+      var n0 = (x.need && x.need_n0 && x.need_n0 > x.need) ? '<br><small>틀림 0건이어도 하한이 기준에 닿으려면 ' + x.need_n0 + '건</small>' : '';
+      return '<tr><td><b>' + x.no + '</b> ' + esc(x.name) + '</td><td>' + esc(x.pop || '현업 판정 전체') + '</td>' +
+        '<td>' + meter + '</td>' +
+        '<td class="n">' + ((x.need && x.graded) ? pct(x.accuracy) + ' <small>(하한 ' + pct(x.low) + ')</small>' : '—') + '</td>' +
+        '<td>' + esc(cond) + n0 + '</td><td>' + st + '</td><td>' + esc(x.grants) + '</td></tr>';
+    }).join('');
+    html.push('<div class="sec"><h2>권한 확대 단계</h2><p class="hint">단계마다 그 단계가 맡기는 일에 맞는 문의만 잽니다(예: 「단순문의 스스로 완료」는 단순문의 · 답변 건만). ' +
+      '<b>승격은 자동이 아니라 담당자가 정합니다</b> — 이 표는 근거를 보여 줄 뿐입니다.</p>' +
+      '<table><tr><th>단계</th><th>재는 대상</th><th>판정 진행</th><th class="n">정확도</th><th>조건</th><th>상태</th><th>맡기는 일</th></tr>' + rowsS + '</table></div>');
+  }
+
+  // 구분별 표
+  function sliceTable(title, hint, dict, opts) {
+    opts = opts || {};
+    var keys = Object.keys(dict || {});
+    if (!keys.length) return '';
+    keys.sort(function (a, b) { return (dict[b].answered || 0) - (dict[a].answered || 0); });
+    var lat = opts.lat || {};
+    var head = '<tr><th>' + esc(opts.first || '구분') + '</th><th class="n">답한 건</th><th class="n">판정</th><th>분포</th><th class="n">정확도</th>' + (opts.lat ? '<th class="n">처리 시간</th>' : '') + '</tr>';
+    var body = keys.map(function (k) {
+      var c = dict[k];
+      var label = opts.label ? opts.label(k) : esc(k);
+      return '<tr><td>' + label + '</td><td class="n">' + c.answered + '</td><td class="n">' + c.graded + '</td><td>' + stack(c) + '</td><td class="n">' + accCell(c) + '</td>' +
+        (opts.lat ? '<td class="n">' + dur((lat[k] || {}).median) + '</td>' : '') + '</tr>';
+    }).join('');
+    return '<div class="sec"><h2>' + esc(title) + '</h2><p class="hint">' + esc(hint) + '</p><table>' + head + body + '</table></div>';
+  }
+  var VK = { answer: '답변', dev: '개발 요청 정리', escalate: '에스컬레이션', hold: '보류' };
+  var NOREC = '(기록 없음 · 9/30 이전)';
+  html.push(LEGEND);
+  html.push('<div class="cols">' +
+    sliceTable('문의 유형별', '접수 유형(단순문의 · 일반요청 · 긴급문의)마다 정확도가 다르면 권한을 유형별로 나눠 열 수 있습니다.', D.by_type) +
+    sliceTable('트리니티봇 판정 종류별', '트리니티봇이 「답변 / 개발 요청 정리 / 에스컬레이션 / 보류」 중 무엇으로 갈랐는지(마지막 판정 기준).', D.by_verdict,
+      { first: '트리니티봇 판정', label: function (k) { return esc(VK[k] || k); } }) +
+    '</div>');
+  var models = {}, mlat = {};
+  Object.keys(D.by_model || {}).forEach(function (k) {
+    var name = k === '' ? NOREC : k;
+    models[name] = D.by_model[k];
+    mlat[name] = (D.latency_by_model || {})[k] || {};
+  });
+  var hasRole = D.by_role && Object.keys(D.by_role).some(function (k) { return k !== '(미기재)'; });
+  html.push('<div class="cols">' +
+    sliceTable('모델별', 'Claude Code 권장(Default) 모델은 CLI 버전이 정합니다 — 조용히 바뀐 뒤의 정확도를 여기서 따로 봅니다.', models,
+      { first: '모델', lat: mlat, label: function (k) { return '<code>' + esc(k) + '</code>'; } }) +
+    (hasRole ? sliceTable('담당 업무별', '문의자가 밝힌 담당 업무 — 여신 · 기준정보처럼 담당자가 직접 해야 하는 조작이 섞이는 쪽의 정확도를 따로 봅니다.', D.by_role, { first: '담당 업무' }) : '') +
+    '</div>');
+
+  // 주별 추이
+  var wk = Object.keys(D.by_week || {}).sort();
+  if (wk.length) {
+    var mx = Math.max.apply(null, wk.map(function (k) { return D.by_week[k].answered; })) || 1;
+    var cols = wk.map(function (k) {
+      var c = D.by_week[k], h = Math.max(6, c.answered / mx * 112);
+      var seg = [['ok', c['맞음']], ['warn', c['보완']], ['bad', c['틀림']], ['pend', c.ungraded]];
+      return '<div class="w"><div class="col" style="height:' + h.toFixed(0) + 'px" title="' + esc(k + ' · 답 ' + c.answered + ' · 정확도 ' + pct(c.accuracy)) + '"><em>' + c.answered + '</em>' +
+        seg.map(function (s) { return s[1] ? '<i class="' + s[0] + '" style="height:' + (s[1] / c.answered * 100).toFixed(1) + '%"></i>' : ''; }).join('') + '</div></div>';
+    }).join('');
+    var xs = wk.map(function (k) { var c = D.by_week[k]; return '<div>' + esc(k.slice(5)) + '<br>' + (c.accuracy == null ? '—' : pct(c.accuracy)) + '</div>'; }).join('');
+    html.push('<div class="sec"><h2>주별 추이</h2><p class="hint">막대 = 그 주(월요일 날짜)에 처음 답한 현업 문의 수, 아래 % = 그 주 정확도.</p><div class="weeks">' + cols + '</div><div class="weeks-x">' + xs + '</div></div>');
+  }
+
+  // 이유 코드
+  var codes = D.codes || {}, allCodes = (D.reason_codes || []).slice();
+  Object.keys(codes).forEach(function (k) { if (allCodes.indexOf(k) < 0) allCodes.push(k); });
+  var mxc = Math.max.apply(null, allCodes.map(function (k) { return codes[k] || 0; }).concat([1]));
+  var anyCode = allCodes.some(function (k) { return codes[k]; });
+  html.push('<div class="sec"><h2>보완 · 틀림의 이유</h2><p class="hint">판정할 때 고른 이유 코드 집계 — 무엇을 고쳐야 정확도가 오르는지 보입니다(시험 문의분 포함).</p>' +
+    (anyCode ? '<div class="bars">' + allCodes.map(function (k) {
+      var n = codes[k] || 0;
+      return '<div class="row"><div class="name">' + esc(k) + '</div><div class="track"><div class="fill" style="width:' + (n / mxc * 100).toFixed(1) + '%;' + (n ? '' : 'display:none') + '">' + n + '</div></div><div class="cnt">' + n + '</div></div>';
+    }).join('') + '</div>' : '<div class="foot">아직 이유 코드가 달린 보완 · 틀림이 없습니다.</div>') + '</div>');
+
+  // 운영 신호
+  if (O) {
+    var f = O.fail || {}, fk = Object.keys(f).map(function (k) { return k + ' ' + f[k]; }).join(' · ');
+    html.push('<div class="sec"><h2>운영 신호</h2><p class="hint">journal 전체 기간 누적 — 정확도와 별개로 「시스템이 건강한가」를 봅니다.</p><div class="tiles">' +
+      '<div class="tile"><b>' + O.runs + '회</b><span>Claude 호출 · $' + O.cost_usd + ' (API 요금 환산)</span></div>' +
+      '<div class="tile' + (O.fail_total ? ' hot' : '') + '"><b>' + O.fail_total + '회</b><span>호출 실패' + (fk ? ' — ' + esc(fk) : '') + '</span></div>' +
+      '<div class="tile' + (O.card_leak_blocked ? ' hot' : '') + '"><b>' + O.card_leak_blocked + '건</b><span>내부 번호 유출 차단</span></div>' +
+      '<div class="tile"><b>' + O.schema_problem + '건</b><span>답 규격 위반(복구 ' + O.salvaged + ')</span></div>' +
+      '<div class="tile"><b>' + O.failover + '회</b><span>엔진 전환</span></div>' +
+      '<div class="tile"><b>' + O.denials + '회</b><span>허용 밖 도구 시도(차단됨)</span></div></div></div>');
+  }
+
+  // 재생 평가
+  var RP = D.replay || [];
+  html.push('<div class="sec"><h2>재생 평가 <small style="font-weight:400;color:var(--mute)">— 완료된 실제 문의로 오프라인에서 다시 푼 점수</small></h2>' +
+    '<p class="hint">현업 판정이 쌓이는 데 걸리는 시간을 기다리지 않고 모델 · 규칙이 바뀔 때마다 같은 문제로 다시 잽니다. 「검증」 사례(옛 벤치에서 답을 보기 전에 고정한 기준)가 우선이고, 「초안」 사례(AI 가 만든 초안 기준)는 참고용입니다.</p>' +
+    (RP.length ? '<table><tr><th>실행</th><th>일시</th><th>모델</th><th class="n">검증 사례</th><th class="n">전체</th><th class="n">보류</th><th class="n">답 없음 · 제외</th><th class="n">치명 감점</th></tr>' +
+      RP.slice(-8).reverse().map(function (h) {
+        return '<tr><td><code>' + esc(h.label || '?') + '</code></td><td>' + esc((h.date || '').slice(0, 16)) + '</td><td>' + esc(h.model || '?') + '</td>' +
+          '<td class="n">' + (h.n_verified ? Number(h.mean_verified).toFixed(1) + ' / 10 <small>(' + h.n_verified + '건)</small>' : '—') + '</td>' +
+          '<td class="n">' + (h.n_all ? Number(h.mean_all).toFixed(1) + ' / 10 <small>(' + h.n_all + '건)</small>' : '—') + '</td>' +
+          '<td class="n">' + (h.n_hold == null ? '—' : h.n_hold + '/' + (h.n_all || '?')) + '</td>' +
+          '<td class="n">' + ((h.no_answer == null && h.run_failed == null) ? '—' : ((h.no_answer == null ? '—' : h.no_answer) + ' · ' + (h.run_failed == null ? '—' : h.run_failed))) + '</td>' +
+          '<td class="n">' + esc(h.critical == null ? '—' : h.critical) + '</td></tr>';
+      }).join('') + '</table>' : '<div class="foot">아직 실행 기록이 없습니다 — <code>python task-dashboard/vacation/bench/replay.py run</code></div>') + '</div>');
+
+  // 판정 대기
+  var wait = (D.rows || []).filter(function (r) { return !r.manual && (!r.grade || r.stale); }).sort(function (a, b) { return a.first < b.first ? 1 : -1; });
+  if (wait.length) {
+    html.push('<div class="sec"><h2>판정을 기다리는 답 <small style="font-weight:400;color:var(--mute)">(' + wait.length + '건)</small></h2>' +
+      '<p class="hint">문의 본문은 여기 없습니다 — 담당자 대시보드 ✏️수정 「🤖 트리니티봇 답 판정」에서 고르거나 <code>log-inquiry.py --id … --grade 맞음|보완|틀림</code>.</p><table>' +
+      '<tr><th>문의</th><th>유형</th><th>트리니티봇 판정</th><th>첫 답</th><th></th></tr>' +
+      wait.slice(0, 30).map(function (r) {
+        return '<tr><td><code>' + esc(r.id) + '</code>' + (r.test ? ' <span class="badge test">시험</span>' : '') + '</td><td>' + esc(r.type || '(미상)') + '</td><td>' + esc(VK[r.verdict] || r.verdict) +
+          '</td><td>' + esc(r.first) + '</td><td>' + (r.stale ? '<span class="badge stale">재판정 필요</span>' : '') + '</td></tr>';
+      }).join('') + '</table>' + (wait.length > 30 ? '<div class="foot">최근 30건만 표시합니다.</div>' : '') + '</div>');
+  }
+
+  html.push('<div class="sec"><details><summary>읽는 법</summary><ul>' +
+    '<li><b>정확도</b> = 맞음 ÷ 판정 완료. <b>쓸 만한 답</b> = (맞음+보완) ÷ 판정 완료.</li>' +
+    '<li><b>95% 하한</b> = 「이 표본으로 95% 확신할 수 있는 최소 정확도」. 표본이 작으면 크게 깎입니다 — 전부 맞아도 20건이면 84%, 50건이면 93%, 100건이면 96%.</li>' +
+    '<li><b>처리 시간</b>은 접수 확인 → 첫 답입니다(시스템이 낸 보류 · 수동 답은 제외). 감시자가 꺼져 있던 시간은 들어가지 않습니다.</li>' +
+    '<li>이 화면은 <b>집계만</b> 보여 줍니다 — 문의 본문 · 요청자 · 메모는 담당자 대시보드에서 봅니다. 데이터 파일은 공유 폴더 밖(런타임 폴더)에 있습니다.</li>' +
+    '<li>현업의 「해결됐나」 신호는 아직 수집하지 않습니다(접수 화면의 쓰기 범위를 넓히는 결정이 필요 — 운영규칙 §7-4).</li></ul></details></div>');
+
+  app.innerHTML = html.join('');
+})();
+</script>
+</body>
+</html>
