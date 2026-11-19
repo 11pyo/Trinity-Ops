@@ -88,6 +88,8 @@ RRF_K = 60
 # 온톨로지(관계도) 순위 가산 배율 — 2026-11-18 오프라인 측정(정답 앵커 134건): 1.0 → @1 26% · @3 61% · MRR 0.46,
 # 0 → @1 68% · @3 81% · MRR 0.75. 재생 평가로 답 품질까지 확인한 뒤 바꾼다(AI_운영체계_개선기록.md 제안 B). 맥락 줄(구조 설명)은 이 값과 무관.
 ONT_BOOST_W = 0.0     # 2026-11-18 결정 — 순위 가산 끔(사전 버킷 @3 47.5→72.5%). 온톨로지는 맥락 줄로만
+# Jev형 System-1 신뢰도 게이트 기준 (2026-11-19 116건 실측: 합의 AND 점수비>=1.2 → 커버리지 50.9%, @1 91.5%, @3 96.6%, 오탐 3.4%)
+FAST_BM_RATIO = 1.2
 
 
 def _nospace(s):
@@ -291,7 +293,7 @@ def _anchors(ref):
     return [x.lstrip("#") for x in re.findall(r"#[A-Za-z0-9_\-]+", ref or "")]
 
 
-def search_all(query, art_ix, prec_ix, prec, arts_by_id, art_top=ART_TOP, prec_top=PREC_TOP, curated=None, ont_boosts=None):
+def search_all(query, art_ix, prec_ix, prec, arts_by_id, art_top=ART_TOP, prec_top=PREC_TOP, curated=None, ont_boosts=None, out_meta=None):
     """(아티클 후보 [(id, 점수, 최적 창 텍스트)], 선례 후보 [(id, 점수)]).
 
     순위 = BM25(창 최고점 + 0.3×차점) + 큐레이션 키워드 순위(curated) + 온톨로지 DOCUMENTED_IN 부스트 RRF 결합."""
@@ -312,15 +314,17 @@ def search_all(query, art_ix, prec_ix, prec, arts_by_id, art_top=ART_TOP, prec_t
     for o, v in best.items():
         v[2] = body[o][1] if o in body else arts_by_id[o]["text"][:EXCERPT_CHARS]
     bm = {o: v[0] + 0.3 * v[1] for o, v in best.items()}
-    bm_order = [o for o, _ in sorted(bm.items(), key=lambda x: -x[1])]
+    bm_sorted = sorted(bm.items(), key=lambda x: -x[1])
+    bm_order = [o for o, _ in bm_sorted]
     score = {}
     for i, o in enumerate(bm_order, 1):
         score[o] = score.get(o, 0.0) + 1.0 / (RRF_K + i)
+    cur_order = []
     if curated:
-        for i, o in enumerate(curated_rank(query, curated[0], curated[1]), 1):
-            if o in arts_by_id:
-                score[o] = score.get(o, 0.0) + 1.0 / (RRF_K + i)
-                best.setdefault(o, [0.0, 0.0, arts_by_id[o]["text"][:EXCERPT_CHARS]])
+        cur_order = [o for o in curated_rank(query, curated[0], curated[1]) if o in arts_by_id]
+        for i, o in enumerate(cur_order, 1):
+            score[o] = score.get(o, 0.0) + 1.0 / (RRF_K + i)
+            best.setdefault(o, [0.0, 0.0, arts_by_id[o]["text"][:EXCERPT_CHARS]])
     boosts = ont_boosts if ont_boosts is not None else expand_ontology_safe(query).get("article_boosts")
     if boosts and ONT_BOOST_W > 0:
         for i, (o, bw) in enumerate(sorted(boosts.items(), key=lambda x: (-x[1], x[0])), 1):
@@ -334,6 +338,20 @@ def search_all(query, art_ix, prec_ix, prec, arts_by_id, art_top=ART_TOP, prec_t
                 if PREC_ANCHOR_W:
                     score[aid] = score.get(aid, 0.0) + (1.0 / (RRF_K + 2)) * PREC_ANCHOR_W * (1.0 if n == 0 else 0.5)
                 best.setdefault(aid, [0.0, 0.0, arts_by_id[aid]["text"][:EXCERPT_CHARS]])
+    if isinstance(out_meta, dict):
+        bm1 = bm_sorted[0][1] if len(bm_sorted) >= 1 else 0.0
+        bm2 = bm_sorted[1][1] if len(bm_sorted) >= 2 else 0.0
+        bm_ratio = (bm1 / bm2) if bm2 > 0 else (99.0 if bm1 > 0 else 0.0)
+        bm_top1 = bm_sorted[0][0] if bm_sorted else None
+        cur_top1 = cur_order[0] if cur_order else None
+        agree = bool(bm_top1 and cur_top1 and bm_top1 == cur_top1)
+        out_meta["confidence"] = {
+            "high": bool(agree and bm_ratio >= FAST_BM_RATIO),
+            "agree": agree,
+            "bm_top1": bm_top1,
+            "cur_top1": cur_top1,
+            "bm_ratio": round(bm_ratio, 2),
+        }
     arts = sorted(score.items(), key=lambda x: -x[1])[:art_top]
     return ([(o, s, best[o][2]) for o, s in arts], [(prec_ix.docs[k][0], s) for s, k in pr])
 
@@ -401,8 +419,12 @@ def section(batch, merged, archive_html, cfg=None):
             if len(q.strip()) < 6:
                 continue
             sq, ont_exp = prepare_query(q)
-            ar, pr = search_all(sq, art_ix, prec_ix, prec, by_id, curated=curated, ont_boosts=ont_exp.get("article_boosts"))
+            meta = {}
+            ar, pr = search_all(sq, art_ix, prec_ix, prec, by_id, curated=curated, ont_boosts=ont_exp.get("article_boosts"), out_meta=meta)
             lines.append("### %s" % iid)
+            conf = meta.get("confidence") or {}
+            if ar and conf.get("high"):
+                lines.append("신뢰도 판정: [높음 · 1차 즉답 후보] (BM25·키워드 1위 합의 #%s · 점수비 %.2f)" % (conf["bm_top1"], conf["bm_ratio"]))
             if ar:
                 lines.append("아카이브 후보:")
                 for n, (aid, s, text) in enumerate(ar, 1):

@@ -60,6 +60,13 @@ try:
 except Exception:
     _OE = None
 
+try:
+    if VAC not in sys.path:
+        sys.path.insert(0, VAC)
+    import prefetch as _PF
+except Exception:
+    _PF = None
+
 
 def ontology_api(qs=""):
     """ERD/온톨로지 요약 또는 질의 결과를 반환한다."""
@@ -195,6 +202,125 @@ def read_log():
         _log_cache["merged"] = merged
         _log_cache["size"], _log_cache["at"] = st.st_size, time.time()
         return {k: dict(v) for k, v in merged.items()}
+
+
+_ask_lock = threading.Lock()
+_ask_cache = {"fp": None, "bundle": None}
+_ASK_MAX_Q = 2000
+_ASK_QUICK_PREFIX = "man-quick-procedures"
+
+
+def _stat_sig(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _ask_ensure_loaded():
+    if _PF is None:
+        return None
+    arch_html = os.path.join(ARCH, "archive.html")
+    arch_struct = os.path.join(ARCH, "archive-structure.md")
+    ont_json = os.path.join(ERD_DIR, "schema_ontology.json")
+    fp = (_stat_sig(arch_html), _stat_sig(arch_struct), _stat_sig(LOG_JS), _stat_sig(ont_json))
+    with _ask_lock:
+        if _ask_cache["fp"] == fp and _ask_cache["bundle"] is not None:
+            return _ask_cache["bundle"]
+    arts = _PF.load_articles(arch_html)
+    if not arts:
+        return None
+    by_id = {a["id"]: a for a in arts}
+    art_ix = _PF.build_article_index(arts)
+    art_ix.tf = []
+    curated = None
+    try:
+        with io.open(arch_struct, encoding="utf-8", errors="replace") as f:
+            srows = _PF.struct_rows(f.read())
+        curated = (srows, _PF.curated_vocab(srows)) if srows else None
+    except OSError:
+        pass
+    prec = _PF.human_precedents(read_log())
+    prec_ix = _PF.build_prec_index(prec)
+    prec_ix.tf = []
+    if _OE is not None:
+        _OE.load_ontology()
+    bundle = {
+        "by_id": by_id,
+        "art_ix": art_ix,
+        "curated": curated,
+        "prec": prec,
+        "prec_ix": prec_ix,
+    }
+    with _ask_lock:
+        _ask_cache["fp"] = fp
+        _ask_cache["bundle"] = bundle
+    return bundle
+
+
+def ask_api(qs=""):
+    """상주 인덱스 기반 고속 검색 API(읽기 전용 · 아카이브/온톨로지/선례)."""
+    if _PF is None:
+        return {"ok": False, "error": "검색 엔진을 불러오지 못했습니다."}
+    params = parse_qs(qs)
+    q = (params.get("q") or [""])[0].strip()
+    if len(q) < 2:
+        return {"ok": False, "error": "질문이 너무 짧습니다."}
+    if len(q) > _ASK_MAX_Q:
+        q = q[:_ASK_MAX_Q]
+    try:
+        top = max(1, min(10, int((params.get("top") or ["4"])[0])))
+    except ValueError:
+        top = 4
+    t0 = time.perf_counter()
+    b = _ask_ensure_loaded()
+    if not b:
+        return {"ok": False, "error": "아카이브를 읽지 못했습니다."}
+    sq, ont = _PF.prepare_query(q)
+    meta = {}
+    ar, pr = _PF.search_all(
+        sq,
+        b["art_ix"],
+        b["prec_ix"],
+        b["prec"],
+        b["by_id"],
+        art_top=top,
+        curated=b["curated"],
+        ont_boosts=ont.get("article_boosts"),
+        out_meta=meta,
+    )
+    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+    return {
+        "ok": True,
+        "query": q,
+        "quick": any(x[0].startswith(_ASK_QUICK_PREFIX) for x in ar),
+        "confidence": meta.get("confidence") or {},
+        "articles": [
+            {
+                "id": aid,
+                "score": s,
+                "title": _PF._clip(b["by_id"][aid]["title"], 80),
+                "excerpt": _PF._clip(text, 400) if n <= 2 else "",
+            }
+            for n, (aid, s, text) in enumerate(ar, 1)
+        ],
+        "ontology": {
+            "matched_nodes": ont.get("matched_nodes") or [],
+            "context_lines": [_PF._clip(ln, 220) for ln in (ont.get("context_lines") or [])],
+        },
+        "precedents": [
+            {
+                "id": pid,
+                "score": s,
+                "date": b["prec"][pid].get("date") or "",
+                "q": _PF._clip(_PF._q_text(b["prec"][pid]), 110),
+                "a": _PF._clip(_PF._a_text(b["prec"][pid]), 220),
+            }
+            for pid, s in pr
+        ],
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 def blocks(a):
@@ -623,6 +749,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, "application/javascript; charset=utf-8", f.read())
             if path == "/api/ontology":
                 return self._json(ontology_api(urlparse(self.path).query))
+            if path == "/api/ask":
+                return self._json(ask_api(urlparse(self.path).query))
             if path == "/report":
                 if not _report["path"] or not os.path.isfile(_report["path"]):
                     return self._send(404, "text/plain; charset=utf-8", "먼저 복귀 보고서를 만들어 주십시오.")
