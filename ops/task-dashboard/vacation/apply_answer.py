@@ -235,14 +235,22 @@ def heartbeat_path(cfg):
     return os.path.join(rt, "heartbeat.jsonl")
 
 
+def _is_prod_rt(cfg, rt):
+    prod = os.path.join(os.path.dirname(ROOT), ".runtime", "_vacation-runtime")
+    cands = {os.path.normcase(os.path.abspath(prod))}
+    lsd = (cfg.get("local_state_dir") or "").strip()
+    if lsd:
+        cands.add(os.path.normcase(os.path.abspath(lsd)))
+    return os.path.normcase(os.path.abspath(rt)) in cands
+
+
 def server_log_dir(cfg, rt=None):
     """접수·저장 서버의 출력 로그 폴더 — 운영은 설정 server_log_dir(C:), 시험은 런타임 폴더(lock_path 와 같은 규칙).
 
     서버 로그를 G: 에 열어 두면 G: 끊김 뒤 서버가 요청마다 로그를 쓰다 실패해 빈 응답만 돌려줬다(2026-10-08)."""
     rt = rt or cfg["runtime_dir"]
     local = (cfg.get("server_log_dir") or "").strip()
-    prod = os.path.join(os.path.dirname(ROOT), ".runtime", "_vacation-runtime")
-    if local and os.path.normcase(os.path.abspath(rt)) == os.path.normcase(os.path.abspath(prod)):
+    if local and _is_prod_rt(cfg, rt):
         try:
             os.makedirs(local, exist_ok=True)
             return local
@@ -260,8 +268,7 @@ def lock_path(cfg, rt=None):
     시험처럼 런타임 폴더를 바꿔 쓰면 운영 잠금을 건드리지 않게 그 폴더 안에 둔다. 폴더를 못 만들면 런타임 폴더로 되돌린다."""
     rt = rt or cfg["runtime_dir"]
     local = (cfg.get("lock_path") or "").strip()
-    prod = os.path.join(os.path.dirname(ROOT), ".runtime", "_vacation-runtime")
-    if local and os.path.normcase(os.path.abspath(rt)) == os.path.normcase(os.path.abspath(prod)):
+    if local and _is_prod_rt(cfg, rt):
         try:
             os.makedirs(os.path.dirname(local), exist_ok=True)
             return local
