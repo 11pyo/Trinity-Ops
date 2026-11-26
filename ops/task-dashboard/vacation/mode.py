@@ -31,6 +31,8 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 DASH = os.path.dirname(HERE)
 ROOT = os.path.dirname(DASH)
 sys.path.insert(0, HERE)
@@ -39,11 +41,24 @@ import apply_answer as GATE                                     # noqa: E402
 import servers as SRV                                           # noqa: E402
 import ledger as LEDGER                                         # noqa: E402
 import engines as ENG                                           # noqa: E402  strip_host_env — 감시자에 사람 세션 환경이 새지 않게
+import runtime_sync as RSYNC                                    # noqa: E402  로컬 C: ↔ G: 무손실 동기화(2026-11-26)
 
 CFG = GATE._cfg()
 RT = CFG["runtime_dir"]
 LAST_REPORT_HTML = ""                  # 마지막으로 만든 복귀 보고서의 HTML 경로(없으면 빈 문자열) — report() 가 채운다
-P_STATE = os.path.join(RT, "state.json")
+P_STATE = os.path.join(GATE.state_dir(CFG, RT), "state.json")
+
+
+def _sdir():
+    return GATE.state_dir(CFG, RT)
+
+
+def _p_state():
+    return os.path.join(_sdir(), "state.json")
+
+
+def _p_seen():
+    return os.path.join(_sdir(), "seen.json")
 
 
 def _load(p, d=None):
@@ -61,6 +76,7 @@ def _save(p, obj):
     io.open(tmp, "w", encoding="utf-8", newline="").write(
         json.dumps(obj, ensure_ascii=False, indent=1))
     os.replace(tmp, p)
+    RSYNC.sync_state_now(_sdir(), RT)
 
 
 # 재개 런처(resume_launcher.py — C: 에 설치되어 작업 스케줄러가 5분마다 부른다)가 읽는 로컬 표지.
@@ -196,7 +212,7 @@ def _start_watcher(wait_sec=20):
         #    Claude Code · Gemini(안티그래비티) · Codex 세션이 `mode.py on` 을 불러도 명령이 끝날 때 같이 꺼지지 않게.
         #    잡히지 않은 예외(감시자가 죽은 이유)는 watcher-stderr.log 에 남는다.
         SRV.spawn_detached([_console_python(), os.path.join(HERE, "watcher.py")], cwd=HERE, env=env,
-                           err_path=os.path.join(RT, "watcher-stderr.log"))
+                           err_path=os.path.join(_sdir(), "watcher-stderr.log"))
     except Exception as e:
         return False, "감시자를 띄우지 못했습니다: %s" % e
     for _ in range(int(wait_sec / 0.5)):
@@ -285,7 +301,7 @@ def seed_seen(web):
 
 
 def mode_on():
-    st = _load(P_STATE)
+    st = _load(_p_state())
     if st.get("mode") == "on":
         # 이미 켜져 있으면 **빠진 것만 다시 켠다.** 버튼을 다시 누르는 게 가장 쉬운 복구 수단이어야 한다.
         # (지문·기준선은 건드리지 않는다 — 부재 도중에 다시 심으면 처리 이력이 흐트러진다)
@@ -312,14 +328,14 @@ def mode_on():
         "intake_down_since": 0, "intake_down_total": 0,
         "saver_down_since": 0, "saver_down_total": 0,
     })
-    _save(P_STATE, st)
+    _save(_p_state(), st)
     _set_resume_flag(True)
     # 지금 있는 웹접수 건의 **문의 지문을 심어 둔다.**
     #   · 그대로면 다시 잡히지 않는다(과거 건을 헤집지 않음)
     #   · 현업이 **추가 질문**을 붙이면 지문이 달라져 자동으로 다시 잡힌다
     #     ← 기준선 id 로만 막으면 이 경우가 영영 무시된다(2026-09-10 발견)
     seen = seed_seen(web)
-    _save(os.path.join(RT, "seen.json"), seen)
+    _save(_p_seen(), seen)
     backlog = sorted(k for k, v in seen.items() if v.get("backlog"))
 
     print("부재중 모드 ON")
@@ -370,7 +386,7 @@ def mode_resume():
     2026-09-11 사용자 지시로 두 서버의 부팅 자동시작을 없앴다 — 휴가 중 재부팅이면 **여기서** 두 서버를 켠다.
     ⛔ 휴가모드가 꺼져 있으면 **아무것도 하지 않는다** — 재부팅할 때마다 휴가모드·서버가 멋대로 켜지면 안 된다.
     """
-    st = _load(P_STATE)
+    st = _load(_p_state())
     if st.get("mode") != "on":
         _set_resume_flag(False)                                 # 꺼진 채 표지만 남은 경우(끄기가 도중에 끊김)를 치운다
         print("휴가모드 꺼짐 — 할 일 없음")
@@ -390,12 +406,12 @@ def mode_resume():
 
 
 def mode_off():
-    st = _load(P_STATE)
+    st = _load(_p_state())
     if st.get("mode") != "on":
         print("부재중 모드가 아닙니다.")
     st["mode"] = "off"
     st["ended_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    _save(P_STATE, st)
+    _save(_p_state(), st)
     _set_resume_flag(False)                                     # 재부팅 자동 재개 해제 — 끄는 즉시
     print("부재중 모드 OFF — 감시자는 다음 확인(5초 이내)에 스스로 멈춥니다.")
 
@@ -501,7 +517,7 @@ def state_line(r):
 
 
 def report(st=None):
-    st = st or _load(P_STATE)
+    st = st or _load(_p_state())
     ix = _intake()
     merged = ix._read_log()
     base = st.get("baseline_id", "")
@@ -531,7 +547,7 @@ def report(st=None):
     by_verdict_all, earlier = last_answers(events)
 
     # 켜기 전에 들어와 답을 기다리던 건(backlog)도 이번 부재 기간의 처리 대상이다 — 보고서에 넣는다
-    seen = _load(os.path.join(RT, "seen.json"), {}) or {}
+    seen = _load(_p_seen(), {}) or {}
     backlog = [i for i, v in seen.items() if (v or {}).get("backlog")]
     new = {i: r for i, r in merged.items()
            if r.get("by") == "웹접수" and (not base or i > base or i in backlog)}
@@ -847,13 +863,13 @@ def report(st=None):
 
 # ───────────────────────────────────────────────────── STATUS
 def status():
-    st = _load(P_STATE)
+    st = _load(_p_state())
     ix = _intake()
     merged = ix._read_log()
     base = st.get("baseline_id", "")
-    seen = _load(os.path.join(RT, "seen.json"), {}) or {}
+    seen = _load(_p_seen(), {}) or {}
     new = [i for i, r in merged.items()
-           if r.get("by") == "웹접수"
+           if r.get("by") in ("웹접수", "웍스메신저")
            and (not base or i > base or (seen.get(i) or {}).get("backlog"))]
     openn = [i for i in new if (merged[i].get("status") or "접수") != "완료"]
     out = {
@@ -869,6 +885,8 @@ def status():
         "runs_today": st.get("runs_count", 0),
         "last_cycle": st.get("last_cycle", ""),
         "runtime_dir": RT,
+        "local_state_dir": _sdir(),
+        "sync": RSYNC.reconcile_all(_sdir(), RT),
     }
     print(json.dumps(out, ensure_ascii=False))
     return 0

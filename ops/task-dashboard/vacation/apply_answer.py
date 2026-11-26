@@ -36,7 +36,10 @@ import os
 import re
 import subprocess
 import sys
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import time
+import runtime_sync as RSYNC
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DASH = os.path.dirname(HERE)                      # task-dashboard
@@ -57,6 +60,7 @@ BOT_PREFIXES = ("[트리니티봇", "[담당자 부재중")
 # 대화 턴 구분 표시 — intake-server.py 의 Q_MARK / A_MARK 와 **같은 글자**여야 한다(시험이 대조한다).
 Q_MARK = "──── 추가 질문"
 A_MARK = "──── 추가 답변"
+AWAY_NOTICE = "현재 부재중이라 트리니티봇이 대신 안내드립니다."
 TAIL = "담당자 복귀 후 확인하여 달라지는 부분이 있으면 정정드리겠습니다."
 # 확정 답변(answer)에만 붙이는 종결 질문(2026-10-06 사용자 지시). 앞부분은 stale_cases.CLOSE_ASK_KEY 와 같아야 한다(시험이 대조).
 CLOSE_ASK = ("이 답변으로 해결되셨으면 아래 [케이스 닫기]를 눌러 주십시오.\n"
@@ -266,6 +270,25 @@ def lock_path(cfg, rt=None):
     return os.path.join(rt, "watcher.lock")
 
 
+def state_dir(cfg, rt=None):
+    r"""고빈도 상태 파일(state.json · seen.json · runs/)의 작업 폴더 — 운영은 로컬 C:, 시험은 런타임 폴더.
+
+    2026-11-26 도입: state.json · seen.json 을 G: 에서 os.replace 로 쓰면 구글 드라이브가 (1..210) 충돌 파일을 양산했다.
+    운영 런타임일 때는 C:\trinitybot-resume\runtime 에서만 원자적 교체를 수행하고, G: 정본(_vacation-runtime)에는
+    runtime_sync.py 가 제자리 쓰기 + 주기적 대조(reconcile)로 무손실 동기화한다."""
+    rt = rt or cfg["runtime_dir"]
+    local = (cfg.get("local_state_dir") or "").strip()
+    prod = os.path.join(os.path.dirname(ROOT), ".runtime", "_vacation-runtime")
+    if local and os.path.normcase(os.path.abspath(rt)) == os.path.normcase(os.path.abspath(prod)):
+        try:
+            os.makedirs(local, exist_ok=True)
+            RSYNC.seed_local_from_gdrive(local, rt)
+            return local
+        except OSError:
+            pass
+    return rt
+
+
 def _intake():
     """intake-server 의 공개 렌더 함수를 그대로 빌려 쓴다 — 검증 로직 이중화를 막는다."""
     spec = importlib.util.spec_from_file_location("intake_mod", INTAKE)
@@ -284,7 +307,12 @@ def _helper(args):
 
 
 def journal(cfg, rec):
-    d = os.path.join(cfg["runtime_dir"], "journal")
+    rt = cfg["runtime_dir"]
+    sdir = state_dir(cfg, rt)
+    if os.path.normcase(os.path.abspath(sdir)) != os.path.normcase(os.path.abspath(rt)):
+        RSYNC.append_journal_dual(sdir, rt, rec)
+        return
+    d = os.path.join(rt, "journal")
     os.makedirs(d, exist_ok=True)
     f = os.path.join(d, time.strftime("%Y-%m-%d") + ".jsonl")
     rec = dict(rec)
@@ -339,6 +367,8 @@ def compose(verdict, public):
     first, _, rest = body.partition("\n")
     if first.strip().startswith(BOT_PREFIXES) and first.strip().endswith("]"):
         body = rest.strip()
+    # 동일 문장을 모델이 넣어도 게이트에서 답변당 한 번만 붙인다.
+    body = body.replace(AWAY_NOTICE, "").strip()
     if verdict == "hold":
         body = body or STD_HOLD_DECIDED
         head = MARK_ACK
@@ -353,6 +383,7 @@ def compose(verdict, public):
         body = _drop_close_ask(body) or STD_FALLBACK
         if not ASKS_MORE_RX.search(body):
             body += "\n" + CLOSE_ASK
+    body += "\n" + AWAY_NOTICE
     if verdict != "hold" and TAIL not in body:
         body += "\n" + TAIL
     # 답변마다 기재 시각을 남긴다. 현업 화면이 이 줄을 뽑아 헤더에 보여준다.
@@ -469,11 +500,16 @@ def ack(iid, cfg=None):
     # ⚠️ **답변란이 비어 있을 때만 쓴다.** 헬퍼 --a 는 답변란을 통째로 바꾸므로, 앞선 AI 답·hold 답
     #    위에 쓰면 그 답이 화면에서 사라지고 다음 답이 엉뚱한 질문에 붙는다(리뷰 #2 — 추가 질문이
     #    붙은 옛 카드에서 실제로 재현됨). 이미 답이 있으면 쓰지 않고 「생략」을 돌려준다.
-    cur = (_intake()._read_log().get(iid) or {}).get("a") or ""
+    rec = _intake()._read_log().get(iid) or {}
+    if rec.get("by") == "웍스메신저":
+        # 웍스 메신저 건은 웹 화면 안내([알림 켜기])가 맞지 않고, 상대에게는 최종 답만 보낸다(2026-11-25).
+        journal(cfg, {"event": "ack_skip_messenger", "id": iid})
+        return "skip"
+    cur = rec.get("a") or ""
     if cur.strip():
         journal(cfg, {"event": "ack_skip", "id": iid})
         return "skip"
-    text = MARK_ACK + "\n" + STD_HOLD + \
+    text = MARK_ACK + "\n" + STD_HOLD + "\n" + AWAY_NOTICE + \
         "\n※ 대화 목록 위쪽 [알림 켜기]를 눌러 두시면, 이 화면이 열려 있는 동안 답변이 등록될 때 알려 드립니다." + \
         "\n   (화면을 닫으면 알림이 가지 않으니 이 주소를 즐겨찾기 해두시고, 닫아 두셨다면 다시 열어 확인해 주세요.)"
     rc, out = _helper(["--id", iid, "--status", "대기", "--a", text])

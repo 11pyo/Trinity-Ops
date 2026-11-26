@@ -31,6 +31,9 @@ DASH = os.path.dirname(HERE)
 ROOT = os.path.dirname(DASH)
 LOG_JS = os.path.join(DASH, "inquiry-log.js")
 INTAKE = os.path.join(DASH, "intake-server.py")
+# 트리니티봇이 답하는 접수 출처 — 웹 접수 + 웍스 메신저(2026-11-25, C:\trinitybot-resume\works-messenger 가 등록).
+# 담당자가 직접 적은 카드(by=운영담당 등)는 여전히 절대 건드리지 않는다.
+INTAKE_SOURCES = ["웹접수", "웍스메신저"]
 CLAUDE = os.path.join(os.environ.get("APPDATA", ""), "npm", "claude.cmd")   # 아래 engines.engine_cmd("claude") 와 같은 값
 
 sys.path.insert(0, HERE)
@@ -41,6 +44,7 @@ import engines as ENG                                         # noqa: E402  엔�
 import answer_schema as SCHEMA                                # noqa: E402  답변 규격·정규화(2026-09-18 DEV-047)
 import auth_canary as CANARY                               # noqa: E402  인증 점검(2026-10-07 — 베타 첫 문의 OAuth 실패)
 import prefetch as PF                                      # noqa: E402  선행 검색(2026-10-07 — 같은 질문이 9점/1점인 편차)
+import runtime_sync as RSYNC                               # noqa: E402  로컬 C: 상태 ↔ G: 무손실 동기화(2026-11-26)
 
 # 트리니티봇 호출 전용 설정(런타임 trinitybot-settings.json 으로 매 호출 다시 쓴다 — 2026-09-11)
 #   · 담당자 PC 의 개인 훅(OMC 플러그인 등)을 끈다 — 도구마다 훅 프로세스가 떠 느린 PC 에서 15분 제한까지 늘어졌다
@@ -73,9 +77,10 @@ def _logfile():
     global _LOGF
     if _LOGF is None:
         try:
-            rt = GATE._cfg()["runtime_dir"]
-            os.makedirs(rt, exist_ok=True)
-            _LOGF = os.path.join(rt, "watcher.log")
+            cfg = GATE._cfg()
+            sdir = GATE.state_dir(cfg, cfg["runtime_dir"])
+            os.makedirs(sdir, exist_ok=True)
+            _LOGF = os.path.join(sdir, "watcher.log")
         except Exception:
             _LOGF = ""
     return _LOGF
@@ -109,7 +114,8 @@ def log(msg):
 class State(object):
     def __init__(self, cfg):
         self.cfg = cfg
-        self.dir = cfg["runtime_dir"]
+        self.gdrive_dir = cfg["runtime_dir"]
+        self.dir = GATE.state_dir(cfg, self.gdrive_dir)
         os.makedirs(self.dir, exist_ok=True)
         self.p_state = os.path.join(self.dir, "state.json")
         self.p_seen = os.path.join(self.dir, "seen.json")
@@ -133,8 +139,11 @@ class State(object):
 
     # 감시자가 소유한 필드만. mode/started_at/baseline_id/ended_at 은 **mode.py 소유**다.
     OWN = ("last_cycle", "answered_total", "runs_count", "runs_date",
+           "sp_count", "sp_date",
            "intake_down_since", "intake_down_total", "_hc_at", "_hc_restart_at",
-           "saver_down_since", "saver_down_total", "_hc_restart_at_intake", "_hc_restart_at_saver")
+           "saver_down_since", "saver_down_total",
+           "desk_down_since", "desk_down_total",
+           "_hc_restart_at_intake", "_hc_restart_at_saver", "_hc_restart_at_desk")
 
     def flush(self):
         """⚠️ 상태 파일을 통째로 덮어쓰면 안 된다.
@@ -166,6 +175,25 @@ class State(object):
         self.runs_today()
         self.state["runs_count"] = self.state.get("runs_count", 0) + 1
 
+    def second_passes_today(self):
+        d = time.strftime("%Y-%m-%d")
+        if self.state.get("sp_date") != d:
+            self.state["sp_date"] = d
+            self.state["sp_count"] = 0
+        return self.state.get("sp_count", 0)
+
+    def bump_second_pass(self):
+        self.second_passes_today()
+        self.state["sp_count"] = self.state.get("sp_count", 0) + 1
+
+    def sync_gdrive(self, full=False):
+        try:
+            if full:
+                return RSYNC.reconcile_all(self.dir, self.gdrive_dir)
+            return RSYNC.sync_state_now(self.dir, self.gdrive_dir)
+        except Exception:
+            return False
+
 
 def intake_mod():
     import importlib.util
@@ -183,8 +211,10 @@ def pending(st, ix):
     now = time.time()
     out = []
     for iid, rec in merged.items():
-        if rec.get("by") != "웹접수":
+        if rec.get("by") not in INTAKE_SOURCES:
             continue                                   # 담당자가 적은 카드는 절대 건드리지 않는다
+        if "(웍스 메신저 접수 중)" in (rec.get("q") or ""):
+            continue                                   # 웍스 브리지 사진 첨부·본문 갱신 전 임시 표지(경합 방지)
         s = st.seen.setdefault(iid, {})
         snap = s.get("answered_hash")
         a = rec.get("a") or ""
@@ -393,6 +423,8 @@ def build_prompt(batch, merged, ix=None, cfg=None, second=None):
                 # 담당 업무 — 같은 질문도 담당에 따라 답이 갈린다(운영규칙 §3 · 2026-09-22~). 빈 칸은 명시해 되묻게 한다
                 "담당": (r.get("role") or "").strip() or "(미기재)",
                 "문의": r.get("q"), "사진": shots}
+        if r.get("by") == "웍스메신저":
+            item["채널"] = "웍스 메신저 대화"          # 대화체로 답한다(PROMPT_TAIL 「웍스 메신저 건」 — 2026-11-26 소유자 지시)
         # 이 문의에 트리니티봇이 앞서 쓴 답을 담당자가 판정해 두었으면 함께 넘긴다(추가 질문으로 다시 잡힌 경우)
         g = (r.get("botgrade") or "").strip()
         if g in LEDGER.GRADES:
@@ -448,6 +480,13 @@ PROMPT_TAIL = """## public(현업이 읽을 답) 쓰는 법 — 읽기 쉽게 (2
 - 주의·참고는 「주의:」로 시작하는 따로 된 문단.
 - 한 문단은 3줄 이하, 문단 사이는 빈 줄 하나. 전체 15줄 안팎.
 - 현업 화면은 글자를 그대로 보여 줍니다 — 굵게·제목·표 같은 마크다운 기호로 꾸미지 마십시오. 글머리가 필요하면 ① ② ③ 이나 · 를 씁니다.
+
+## "채널": "웍스 메신저 대화" 인 건 — 위 형식 대신 이렇게 (2026-11-26 소유자 지시: 「템플릿 형식 말고 평범하게 말하듯」)
+- 담당자가 메신저로 동료에게 직접 말하듯 자연스러운 존댓말 대화체로 씁니다. ①②③ 번호 목록·「주의:」 문단·정형 머리말을 쓰지 마십시오.
+- 짧게: 보통 2~6문장. 필요한 확인 요청은 문장 속에 한두 개만 자연스럽게 묻습니다.
+- 사진·앞선 대화에 이미 나온 정보(오류 메시지, 화면 값, 상대가 이미 한 설명)를 다시 묻지 마십시오. 사진을 먼저 꼼꼼히 읽고 그 내용을 근거로 말합니다.
+- 같은 대화에서 앞서 한 말(부재 안내, 긴급 연락처, 반복 시도 금지 같은 상투 문구)을 되풀이하지 마십시오. 트리니티봇 표기는 시스템이 붙이니 본문에 쓰지 않습니다.
+- 위험한 조작(삭제·취소·전기·저장 반복 등)을 피하라는 말이 꼭 필요할 때만 한 문장으로 덧붙입니다.
 
 ## 처리할 문의
 %s
@@ -546,7 +585,9 @@ def _invoke_engine(eng, st, prompt, tag, extra_dirs=(), model=None, should_abort
                                      # 2026-11-18 담당자 결정: Claude 모델 고정(config.json claude_model) — CLI 「권장」이 11-17 소넷→오퍼스로 바뀌어
                                      # 주간 한도 소진 위험이 커졌다. 비우면 예전처럼 「권장」을 따른다.
                                      "model": (model or st.cfg.get("gemini_model")) if eng == "gemini"
-                                              else (model or st.cfg.get("claude_model") or None)})
+                                              else (model or st.cfg.get("agy_model") or None) if eng == "agy"
+                                              else (model or st.cfg.get("claude_model") or None),
+                                     "effort": st.cfg.get("agy_effort", "medium")})
     cmd, env = inv["argv"], inv["env"]
     for note in inv.get("notes") or ():
         log("  ⚠ %s" % note)
@@ -556,7 +597,7 @@ def _invoke_engine(eng, st, prompt, tag, extra_dirs=(), model=None, should_abort
             p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=fh,
                                  stderr=efh, cwd=ROOT, env=env)
             try:
-                p.stdin.write(prompt.encode("utf-8"))
+                p.stdin.write(ENG.format_stdin(eng, prompt).encode("utf-8"))
                 p.stdin.close()
             except OSError:
                 pass
@@ -655,29 +696,35 @@ def call_claude(st, prompt, tag, extra_dirs=(), model=None):
     # ⚡ 자동 페일오버: Claude 가 한도 소진이면 Gemini(공식 CLI · 격리 정책)가 이어받는다 — engines.check_usable 관문(사람이 켠 verified)을 통과할 때만
     # 전환 조건은 **한도 소진만**(2026-09-22 좁힘) — 종전 `or err` 는 시간초과·일시 오류에도 넘어가 한 문의에 두 엔진 시간을 썼다.
     if eng == "claude" and ENG.is_exhausted("claude", d=d, err=err):
-        can_g, r_g = ENG.check_usable("gemini")
-        if can_g:
-            fail_why = (d or {}).get("result") or err or "Claude 한도 소진(Weekly/Rate Limit)"
-            log("  ⚡ Claude 한도 소진 감지 (%s) -> Gemini로 자동 대체 실행" % str(fail_why)[:100])
-            GATE.journal(st.cfg, {"event": "failover", "from": "claude", "to": "gemini",
+        fail_why = (d or {}).get("result") or err or "Claude 한도 소진(Weekly/Rate Limit)"
+        for fb_eng in ("agy",):  # 2026-11-26 담당자 지시: gemini-3.8-flash 페일오버 금지, agy(수소 모델)만 사용
+            can_fb, _ = ENG.check_usable(fb_eng)
+            if not can_fb:
+                continue
+            log("  ⚡ Claude 한도 소진 감지 (%s) -> %s로 자동 대체 실행" % (str(fail_why)[:100], fb_eng))
+            GATE.journal(st.cfg, {"event": "failover", "from": "claude", "to": fb_eng,
                                   "tag": tag, "reason": str(fail_why)[:200]})
-            # 모델 사슬 — 한도 소진이면 다음 모델, 그 밖의 실패는 거기서 멈춘다(무한 재시도 금지)
-            # config.json gemini_model 은 **맨 앞** 모델을 정할 뿐, 예비 사슬을 없애지 않는다(2026-09-22)
-            chain = list(ENG.ENGINES["gemini"].get("models") or [])
-            first = st.cfg.get("gemini_model")
+            if fb_eng == "agy":
+                chain = ENG.select_agy_models(effort=st.cfg.get("agy_effort", "medium"))
+                first = (st.cfg.get("agy_model") or "").strip()
+            else:
+                # 모델 사슬 — 한도 소진이면 다음 모델, 그 밖의 실패는 거기서 멈춘다(무한 재시도 금지)
+                # config.json gemini_model 은 **맨 앞** 모델을 정할 뿐, 예비 사슬을 없애지 않는다(2026-09-22)
+                chain = list(ENG.ENGINES["gemini"].get("models") or [])
+                first = st.cfg.get("gemini_model")
             models = ([first] + [m for m in chain if m != first]) if first else (chain or [None])
             for mi, mdl in enumerate(models):
-                tag_g = "%s-gemini%s" % (tag, "" if mi == 0 else "-%d" % mi)
-                d_g, err_g = _invoke_engine("gemini", st, prompt, tag_g, extra_dirs, model=mdl)
-                if err_g == _SUPERSEDED:
+                tag_fb = "%s-%s%s" % (tag, fb_eng, "" if mi == 0 else "-%d" % mi)
+                d_fb, err_fb = _invoke_engine(fb_eng, st, prompt, tag_fb, extra_dirs, model=mdl)
+                if err_fb == _SUPERSEDED:
                     return None, _SUPERSEDED
-                if d_g and not err_g and not d_g.get("is_error") and not ENG.is_exhausted("gemini", d=d_g, err=err_g):
-                    log("  ✨ Gemini(%s) 대체 호출 성공" % (mdl or "기본"))
-                    return d_g, None
-                if ENG.is_exhausted("gemini", d=d_g, err=err_g) and mi + 1 < len(models):
-                    log("  ⚠ Gemini(%s) 한도 소진 → %s" % (mdl, models[mi + 1]))
+                if d_fb and not err_fb and not d_fb.get("is_error") and not ENG.is_exhausted(fb_eng, d=d_fb, err=err_fb):
+                    log("  ✨ %s(%s) 대체 호출 성공" % (fb_eng, mdl or "기본"))
+                    return d_fb, None
+                if ENG.is_exhausted(fb_eng, d=d_fb, err=err_fb) and mi + 1 < len(models):
+                    log("  ⚠ %s(%s) 한도 소진 → %s" % (fb_eng, mdl, models[mi + 1]))
                     continue
-                log("  ⚠ Gemini 대체 실패(%s): %s" % (mdl, str(err_g or (d_g or {}).get("result"))[:200]))
+                log("  ⚠ %s 대체 실패(%s): %s" % (fb_eng, mdl, str(err_fb or (d_fb or {}).get("result"))[:200]))
                 break
     return d, err
 def stream_result(raw):
@@ -1058,11 +1105,17 @@ def second_pass(st, ix, merged, batch, answers, tag):
         ids2 = second_pass_ids(answers, merged, batch)
         if not ids2 or st.runs_today() >= st.cfg["max_runs_per_day"]:
             return answers, info
+        sp_cap = (st.cfg or {}).get("max_second_pass_per_day")
+        if sp_cap is not None and hasattr(st, "second_passes_today") and st.second_passes_today() >= int(sp_cap):
+            log("  ⚠ 일일 2차 시도 상한(%d회) 도달 — 1차 답을 그대로 씁니다" % int(sp_cap))
+            return answers, info
         first = {a["id"]: a for a in answers if a.get("id") in ids2}
         prompt2 = build_prompt(ids2, merged, ix, st.cfg, second=first)
         if "## 자동 선행 검색 결과" not in prompt2:             # 검색 결과를 못 만들면 2차 시도는 의미가 없다
             return answers, info
         st.bump_run()
+        if hasattr(st, "bump_second_pass"):
+            st.bump_second_pass()
         st.flush()
         log("2차 시도 — 보류·에스컬레이션 %d건에 선행 검색 결과를 넣어 다시 호출 (%s)" % (len(ids2), ", ".join(ids2)))
         # 계단식(2026-11-18 · 개선기록 5절): 2차만 다른 모델(config second_pass_claude_model, 비우면 1차와 같은 모델)
@@ -1498,6 +1551,8 @@ def main():
                 if n:
                     st.state["answered_total"] = st.state.get("answered_total", 0) + n
                 st.flush()
+                if hasattr(st, "sync_gdrive"):
+                    st.sync_gdrive(full=bool(recon))
             health_check(st, now)
             hold_settings(now)
             if now >= canary_at and ENG.resolve(cfg) == "claude":
@@ -1522,9 +1577,37 @@ def main():
             time.sleep(15)
 
 
+def works_once():
+    """웍스 메신저 자동응답 시간대(평일 17~08시·주말·캘린더 외근/교육/휴가)에 휴가모드가 꺼져 있으면
+    **웍스메신저 건만** 한 번 처리하고 끝낸다. works-messenger/watcher.mjs 가 건이 생길 때만 부른다(2026-11-25).
+    휴가모드가 켜져 있으면 상시 감시자가 같은 건을 처리하므로 아무것도 하지 않는다. 휴가모드 상태는 바꾸지 않는다."""
+    global INTAKE_SOURCES
+    cfg = GATE._cfg()
+    st = State(cfg)
+    if st.mode_on():
+        log("[웍스 1회] 휴가모드 감시자가 처리합니다 — 종료")
+        return 0
+    eng = ENG.resolve(cfg)
+    usable, why = ENG.check_usable(eng)
+    if not usable:
+        log("⚠ [웍스 1회] 엔진을 쓸 수 없습니다 — %s" % why)
+        return 1
+    if single_instance(st.dir) is None:
+        log("[웍스 1회] 다른 감시자가 실행 중 — 종료")
+        return 0
+    INTAKE_SOURCES = ["웍스메신저"]                    # 시간대 자동응답은 메신저 건만 — 웹 문의 자동답변은 휴가모드 때만
+    ix = intake_mod()
+    n = cycle(st, ix)
+    st.flush()
+    if hasattr(st, "sync_gdrive"):
+        st.sync_gdrive(full=False)
+    log("[웍스 1회] 처리 %d건 · 엔진 %s" % (n, ENG.describe(eng)))
+    return 0
+
+
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(works_once() if "--works-once" in sys.argv else main())
     except SystemExit:
         raise
     except BaseException:

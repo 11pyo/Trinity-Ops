@@ -1,7 +1,7 @@
 {
   "ai_answer_status": "대기",
   "claude_model": "claude-sonnet-5-5",
-  "gemini_model": "gemini-3.8-flash",
+  "gemini_model": "",
   "runtime_dir": "",
   "heartbeat_path": "",
   "lock_path": "",
@@ -13,8 +13,8 @@
   "max_attempts": 3,
   "claude_timeout_sec": 900,
   "auth_canary_hours": 4,
-  "prefetch_enabled": false,
-  "second_pass_enabled": false,
+  "prefetch_enabled": true,
+  "second_pass_enabled": true,
   "owner_test_req": "운영담당·영업지원팀",
   "test_reqs": [
     "대화검증·검증용",
@@ -70,5 +70,10 @@
       "max_wrong": 0,
       "grants": "운영계(PRD) 조회 권한을 회사에 신청할 근거 자료 — 승인은 회사 절차"
     }
-  ]
+  ],
+  "agy_model": "gemini-4-hydrogen-medium",
+  "agy_effort": "medium",
+  "local_state_dir": "",
+  "second_pass_claude_model": "claude-opus-5-5",
+  "max_second_pass_per_day": 5
 }

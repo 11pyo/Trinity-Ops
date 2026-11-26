@@ -29,6 +29,9 @@ engines.py — 트리니티봇을 **어느 LLM CLI 로도** 부를 수 있게 �
 import io
 import json
 import os
+import re
+import subprocess
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -89,8 +92,8 @@ ENGINES = {
         # ✅ 2026-09-22 담당자 지시로 켬(「클로드 토큰 없을 시 제미나이로 대체 모드 켜 둬라」 — 사람이 켠다는 INV13 충족).
         #    근거: 격리 실측 전 실행 셸·쓰기 흔적 0 · 3.8-flash 통과 3회(나머지는 API 한도 소진으로 판정 불가) ·
         #    3.1-flash-lite 3회 연속 통과. 격리는 모델이 아니라 CLI 정책(--admin-policy)이 강제한다.
-        #    정책·실행 인자를 바꾸면 다시 False 로 두고 probe_isolation.py 부터.
-        "verified": True,
+        # ⛔ 2026-11-26 담당자 지시로 비활성화: gemini-3.8-flash 페일오버 금지 → agy 수소(Hydrogen) 모델 단독 사용.
+        "verified": False,
         "web": True,
         "key_env": "GEMINI_API_KEY",
         # 모델 고정 — 「자동」은 가벼운 모델과 오가며 결과가 흔들렸다(2026-09-22 시험 1회 읽기 누락).
@@ -104,6 +107,15 @@ ENGINES = {
         #   3.8 한도가 차면 대체는 실패로 기록되고 트리니티봇은 「접수 확인」만 남긴다(틀린 답보다 낫다).
         "models": ["gemini-3.8-flash"],
         "policy": ("policies", "gemini-trinitybot.toml"),
+    },
+    "agy": {
+        # Antigravity CLI (2026-11-20): toolPermission=request-review + permissions.deny 로 격리 보장.
+        # --dangerously-skip-permissions 는 절대 넘기지 않으며, probe_isolation.py 3/3 통과 후 verified=True.
+        "cmd_env": ("LOCALAPPDATA", "agy", "bin", "agy.exe"),
+        "isolation": "전용 설정 파일(--settings: toolPermission=request-review + permissions.deny 로 셸·쓰기·브라우저·DEV 100 차단, 읽기·웹·DEV 120만 허용)",
+        "verified": True,  # 2026-11-20 실측: probe_isolation.py agy 3/3 연속 통과(42/44/35초)
+        "web": True,
+        "effort": "medium",
     },
 }
 
@@ -148,6 +160,70 @@ def check_usable(engine):
     return True, ""
 
 
+_AGY_MODEL_CACHE = {"ts": 0.0, "lines": None}
+_AGY_LIGHT_TIERS = {"hydrogen": 0}  # 2026-11-26 담당자 지시: agy 페일오버는 수소(Hydrogen) 모델만 허용(flash 계열 제외)
+_AGY_FALLBACK_MODELS = ["gemini-4-hydrogen-medium", "gemini-4-hydrogen-low"]
+
+
+def _parse_agy_model_key(mid, preferred_effort="medium"):
+    """경량 Gemini 모델만 점수를 매긴다. (티어순위, -세대튜플..., effort순위) — 작을수록 우선."""
+    m = re.match(r"^gemini-(\d+(?:\.\d+)*)-([a-z0-9-]+?)(?:-(low|medium|high|xhigh))?$", mid)
+    if not m:
+        return None
+    ver_s, tier, eff = m.group(1), m.group(2), m.group(3) or "medium"
+    if tier not in _AGY_LIGHT_TIERS or eff == "xhigh":
+        return None
+    ver = (tuple(int(x) for x in ver_s.split(".")) + (0, 0, 0))[:3]
+    eff_order = {"medium": 0, "low": 1, "high": 2} if preferred_effort == "medium" else (
+        {"low": 0, "medium": 1, "high": 2} if preferred_effort == "low" else {"high": 0, "medium": 1, "low": 2}
+    )
+    return (tuple(-v for v in ver), _AGY_LIGHT_TIERS[tier], eff_order.get(eff, 9), mid)
+
+
+def select_agy_models(effort="medium", lines=None, cmd=None, limit=3):
+    """`agy models` 출력에서 최신 세대 경량 Gemini 모델(기본 effort=medium)을 동적으로 고른다."""
+    raw_lines = lines
+    if raw_lines is None:
+        now = time.time()
+        if _AGY_MODEL_CACHE["lines"] is not None and (now - _AGY_MODEL_CACHE["ts"]) < 3600:
+            raw_lines = _AGY_MODEL_CACHE["lines"]
+        else:
+            c = cmd or engine_cmd("agy")
+            if c and os.path.exists(c):
+                try:
+                    p = subprocess.run([c, "models"], capture_output=True, text=True,
+                                       encoding="utf-8", errors="replace", timeout=15)
+                    if p.returncode == 0 and (p.stdout or "").strip():
+                        raw_lines = p.stdout.splitlines()
+                        _AGY_MODEL_CACHE["lines"] = raw_lines
+                        _AGY_MODEL_CACHE["ts"] = now
+                except Exception:  # noqa: BLE001
+                    raw_lines = None
+    scored = []
+    seen = set()
+    for ln in (raw_lines or []):
+        tok = (ln or "").strip().split()
+        if not tok:
+            continue
+        mid = tok[0]
+        if mid in seen:
+            continue
+        key = _parse_agy_model_key(mid, preferred_effort=(effort or "medium").lower())
+        if key is not None:
+            seen.add(mid)
+            scored.append((key, mid))
+    scored.sort(key=lambda x: x[0])
+    out = [mid for _, mid in scored[:limit]] if limit else [mid for _, mid in scored]
+    return out or list(_AGY_FALLBACK_MODELS)
+
+
+def format_stdin(engine, prompt):
+    """엔진별 표준입력 형식으로 변환한다(agy 는 stream-json user 이벤트, 나머지는 원문 그대로)."""
+    if engine == "agy":
+        return json.dumps({"event": "user", "message": {"content": prompt}}, ensure_ascii=False) + "\n"
+    return prompt
+
+
 # ── 실행 준비 ────────────────────────────────────────────────────────────
 # 사람 세션(Claude 데스크톱 앱 · Claude Code)이 자식 프로세스에 심어 주는 환경 변수 — 트리니티봇은 그 세션과 무관하게 돌아야 한다.
 # 감시자를 AI 세션에서 띄우면(`mode.py on` 등) 이 변수들이 새어 들어가 `claude -p` 가 인증 갱신을 그 세션(호스트)에 위임하려다
@@ -177,6 +253,8 @@ def build_invocation(engine, ctx):
         return _claude_invocation(ctx)
     if engine == "gemini":
         return _gemini_invocation(ctx)
+    if engine == "agy":
+        return _agy_invocation(ctx)
     raise ValueError("모르는 엔진: %s" % engine)
 
 
@@ -255,6 +333,51 @@ def _gemini_invocation(ctx):
     return {"argv": argv, "env": env, "notes": notes}
 
 
+def _agy_invocation(ctx):
+    """Antigravity CLI(agy) — 통합 권한 엔진(toolPermission=request-review + permissions.deny)으로 격리한다."""
+    rt = ctx["rt"]
+    notes = []
+    sp = os.path.join(rt, "agy-trinitybot-settings.json")
+    settings = {
+        "toolPermission": "request-review",
+        "permissions": {
+            "deny": [
+                "command(*)",
+                "unsandboxed(*)",
+                "write_file(*)",
+                "execute_url(*)",
+                "download_url(*)",
+                "mcp(mcp-abap-abap-adt-api/*)",
+                "mcp(chrome-devtools/*)",
+            ],
+            "allow": [
+                "read_file(*)",
+                "read_url(*)",
+                "mcp(mcp-abap-dev120/*)",
+            ],
+        },
+    }
+    try:
+        io.open(sp, "w", encoding="utf-8").write(json.dumps(settings, ensure_ascii=False, indent=2))
+    except OSError as e:
+        notes.append("agy 전용 설정 파일을 쓰지 못했습니다: %s" % e)
+        sp = ""
+    argv = [ctx.get("cmd") or engine_cmd("agy")]
+    if sp:
+        argv += ["--settings", sp]
+    argv += ["--disable-slash-commands", "--input-format", "stream-json", "--output-format", "stream-json"]
+    model = ctx.get("model") or select_agy_models(effort=ctx.get("effort") or ENGINES["agy"].get("effort", "medium"))[0]
+    if model:
+        argv += ["--model", model]
+    for d in ctx.get("extra_dirs") or ():
+        if d and os.path.isdir(d):
+            argv += ["--add-dir", d]
+    env = strip_host_env(dict(os.environ))
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["NO_COLOR"] = "1"
+    return {"argv": argv, "env": env, "notes": notes}
+
+
 # ── 출력 해석 ────────────────────────────────────────────────────────────
 def parse_result(engine, raw):
     """엔진 출력에서 최종 결과를 꺼내 **claude stream-json 의 result 줄과 같은 모양**으로 돌려준다.
@@ -291,6 +414,26 @@ def parse_result(engine, raw):
                 "permission_denials": denials,
                 "error": str(((res or {}).get("error") or {}).get("message")
                              if isinstance((res or {}).get("error"), dict) else ((res or {}).get("error") or ""))[:500]}
+    if engine == "agy":
+        res = None
+        for e in _json_lines(lines):
+            if e.get("event") == "result" and isinstance(e.get("result"), dict):
+                res = e["result"]
+        if res is None:
+            return None
+        status = res.get("status")
+        usage = res.get("usage") or {}
+        dur_s = float(res.get("duration_seconds") or 0)
+        return {"type": "result", "result": str(res.get("response") or ""),
+                "is_error": status != "SUCCESS",
+                "num_turns": res.get("num_turns"),
+                "total_cost_usd": 0,
+                "duration_ms": round(dur_s * 1000),
+                "usage": {"input_tokens": usage.get("input_tokens"),
+                          "output_tokens": usage.get("output_tokens"),
+                          "cached": usage.get("cache_read_tokens")},
+                "permission_denials": [],
+                "error": str(res.get("error") or "")[:500]}
     raise ValueError("모르는 엔진: %s" % engine)
 
 
@@ -308,9 +451,12 @@ def is_exhausted(engine, raw="", err="", d=None):
         )
         if any(kw in lower for kw in exhausted_keywords):
             return True
-    if engine == "gemini":
+    if engine in ("gemini", "agy"):
         lower = ("%s %s %s %s" % (raw or "", err or "", (d or {}).get("result") or "", (d or {}).get("error") or "")).lower()
-        return any(k in lower for k in ("resource_exhausted", "quota", '"code":429', "status 429"))
+        kws = ("resource_exhausted", "quota", '"code":429', "status 429")
+        if engine == "agy":
+            kws = kws + ("rate limit", "rate_limit", "too many requests", "out of credits", "usage limit", "weekly limit", "exhausted")
+        return any(k in lower for k in kws)
     return False
 
 
@@ -344,6 +490,11 @@ def model_of(engine, lines):
                 init = str(e["model"])
             elif t == "result":
                 used = sorted(((e.get("stats") or {}).get("models") or {}).keys())
+        elif engine == "agy":
+            if e.get("event") == "init":
+                m = ((e.get("init") or {}).get("model") or "")
+                if m:
+                    return str(m)
     if engine == "gemini":
         return init if (init and init != "auto") else ("+".join(used) or init)
     return ""
@@ -386,25 +537,37 @@ def tool_events(engine, lines):
             # 공식 CLI stream-json(2026-09-22 실측): {"type":"tool_use","tool_name":..,"parameters":{..}}
             if e.get("type") == "tool_use":
                 out.append((str(e.get("tool_name") or "?"), e.get("parameters") or {}))
+        elif engine == "agy":
+            if e.get("event") == "step_update":
+                su = e.get("step_update") or {}
+                if su.get("step_type") == "tool" and su.get("state") == "DONE":
+                    ti = su.get("tool_info") or {}
+                    tname = str(su.get("tool_name") or ti.get("name") or "?")
+                    params = ti.get("parameters") or {}
+                    if tname == "call_mcp_tool" and params.get("ServerName") and params.get("ToolName"):
+                        tname = "mcp__%s__%s" % (params.get("ServerName"), params.get("ToolName"))
+                    out.append((tname, params))
     return out
 
 
 _TO_CLAUDE_TOOL = {"read_file": "Read", "read_many_files": "Read", "grep_search": "Grep",
                    "search_file_content": "Grep", "glob": "Glob", "list_directory": "Glob",
-                   "google_web_search": "WebSearch", "web_fetch": "WebFetch"}
+                   "find_by_name": "Glob", "list_dir": "Glob",
+                   "google_web_search": "WebSearch", "search_web": "WebSearch",
+                   "web_fetch": "WebFetch", "read_url_content": "WebFetch"}
 
 
 def _to_claude_input(name, p):
     if name == "Read":
-        return {"file_path": p.get("file_path") or p.get("absolute_path") or ", ".join(p.get("paths") or [])}
+        return {"file_path": p.get("file_path") or p.get("absolute_path") or p.get("Path") or ", ".join(p.get("paths") or [])}
     if name == "Grep":
-        return {"pattern": p.get("pattern"), "path": p.get("dir_path") or p.get("path"), "glob": p.get("include")}
+        return {"pattern": p.get("pattern") or p.get("Query"), "path": p.get("dir_path") or p.get("path") or p.get("SearchPath"), "glob": p.get("include")}
     if name == "Glob":
-        return {"pattern": p.get("pattern") or p.get("dir_path")}
+        return {"pattern": p.get("pattern") or p.get("dir_path") or p.get("Pattern") or p.get("SearchDirectory") or p.get("DirectoryPath")}
     if name == "WebSearch":
         return {"query": p.get("query")}
     if name == "WebFetch":
-        return {"url": p.get("url") or p.get("prompt")}
+        return {"url": p.get("url") or p.get("Url") or p.get("prompt")}
     return dict(p)
 
 
