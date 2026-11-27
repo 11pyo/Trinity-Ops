@@ -47,6 +47,7 @@ HUB_PAGES = {
     "/bot-metrics": os.path.join(PROD, "bot-metrics.html"),
     "/kpi": os.path.join(DIAG_DIR, "latest.html"),
     "/overview": os.path.join(ARCH, "trinity_overview.html"),
+    "/protocol": os.path.join(PROD, "protocol.html"),
 }
 # 대시보드는 저장 서버(5178)로 원본을 덮어쓴다 — 허브에서 연 사본은 저장하지 않게 막는다(아래 _board_readonly)
 BOARD_BANNER = (
