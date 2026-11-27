@@ -123,17 +123,20 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 <nav class="oc-nav" aria-label="Ops Console" data-noexport>
   <b>Ops Console</b>
   <a href="http://127.0.0.1:5177/" data-hub="/">문의 데스크</a>
-  <a href="../task-board.html" data-hub="/board">대시보드</a>
+  <a href="../../task-dashboard/task-board.html" data-hub="/board">대시보드</a>
   <a href="../../archive.html" data-hub="/archive">아카이브</a>
   <a href="../../erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
-  <a href="../bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
-  <a href="../metrics.html" data-hub="/metrics">협업 지표</a>
+  <a href="../../task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
+  <a href="../../task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
-document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
-var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
-if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+var p=decodeURIComponent(location.pathname).replace(/\\/g,"/");var inDiag=!hub&&/\/diagnostics\/[^/]+\.html$/i.test(p);
+function rw(root){root.querySelectorAll("a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");if(hub){if(!dh){a.hidden=true;return;}a.setAttribute("href",dh);}});}
+rw(document);if(hub)document.addEventListener("DOMContentLoaded",function(){rw(document);});
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");
+var me=hub?location.pathname:p.split("/").pop();var t=hub?dh:a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/")||(hub&&dh==="/kpi"&&me.indexOf("/diagnostics/")===0)||(inDiag&&dh==="/kpi")||(!hub&&me==="desk.html"&&dh==="/"))a.setAttribute("aria-current","page");});})();</script>
 <div class="wrap">
 
 <div class="top"><h1>문의 데스크</h1>
@@ -258,11 +261,11 @@ function reviewForm(r){
   var key = "g:" + r.id, st = draft(key), wrap = el("div");
   var bar = el("div", "bar"), seg = el("div", "seg"); seg.setAttribute("role", "radiogroup"); seg.setAttribute("aria-label", "트리니티봇 답 판정");
   var codeBar = el("div", "bar"), msg = el("span", "msg"); msg.setAttribute("role", "status");
-  ["맞음", "보완", "틀림"].forEach(function(g, k){
+  ["맞음", "보완", "틀림", "제외"].forEach(function(g, k){
     var l = el("label"), i = el("input"); i.type = "radio"; i.name = "g-" + r.id; i.value = g; i.checked = st.grade === g;
     i.setAttribute("data-k", "gr:" + r.id + ":" + g);
     if(k === 0) i.setAttribute("data-first", "");
-    i.onchange = function(){ st.grade = g; codeBar.hidden = g === "맞음"; };
+    i.onchange = function(){ st.grade = g; codeBar.hidden = (g === "맞음" || g === "제외"); };
     l.appendChild(i); l.appendChild(document.createTextNode(g)); seg.appendChild(l);
   });
   bar.appendChild(seg);
@@ -270,7 +273,7 @@ function reviewForm(r){
   note.setAttribute("data-k", "gn:" + r.id);
   note.style.flex = "1"; note.style.minWidth = "200px"; note.value = st.note; note.oninput = function(){ st.note = note.value; };
   bar.appendChild(note);
-  codeBar.hidden = !st.grade || st.grade === "맞음";
+  codeBar.hidden = !st.grade || st.grade === "맞음" || st.grade === "제외";
   codeBar.appendChild(el("span", "memo", "이유:"));
   CODES.forEach(function(c){
     var l = el("label"), i = el("input"); i.type = "checkbox"; i.checked = !!st.codes[c];

@@ -6,7 +6,7 @@
 
 ## 화면 구성 (2026-11-17 — 메일함형 · Ops Console 허브)
 
-- **위쪽 메뉴**: `templates/ops-console.md` 정본 그대로(문의 데스크 · 대시보드 · 아카이브 · ERD · 봇 지표 · 협업 지표). 색은 같은 문서의 `--oc-*` 토큰 — 기기 설정에 따라 어두운 화면.
+- **위쪽 메뉴**: `templates/ops-console.md` 정본 그대로(문의 데스크 · 대시보드 · 아카이브 · ERD · 봇 지표 · 협업 지표 · KPI 진단 성적표 · 트리니티봇 종합소개서). 색은 같은 문서의 `--oc-*` 토큰 — 기기 설정에 따라 어두운 화면.
 - **왼쪽 목록**: 검토할 트리니티봇 답 + 답을 기다리는 건을 한 목록으로(긴급문의 먼저). 거르기 전체 · 검토 · 답 대기.
 - **오른쪽 상세**: 고른 건의 판정 칸(맞음 · 보완 · 틀림 + 이유 + 메모 + 답) 또는 답 칸. 기록하면 다음 건이 자동으로 골라진다.
 - **키보드**: `j`/`↓` 다음 · `k`/`↑` 이전 · `Enter` 판정·답 칸으로(입력칸 안에서는 동작하지 않음). 900px 이하에서는 목록 → 상세 → 「← 목록으로」.
@@ -21,6 +21,8 @@
 | `/erd` | `erd-graph/erd-viewer.html` |
 | `/metrics` | `task-dashboard/metrics.html` (+ `/inquiry-log.js` = 이 서버의 문의 로그, 읽기 전용) |
 | `/bot-metrics` | `task-dashboard/bot-metrics.html` (+ `/.runtime/_vacation-runtime/bot-metrics-data.js`, 읽기 전용) |
+| `/kpi` | `task-dashboard/diagnostics/latest.html` (+ `/diagnostics/index.html` · `/diagnostics/YYYY-MM-DD_*.html`, 읽기 전용) |
+| `/overview` | `trinity_overview.html` (읽기 전용) |
 
 허브 메뉴는 `127.0.0.1:5177` 에서만 서버 경로로 바뀐다(시험 포트 5187 에서는 파일 상대 경로 그대로).
 `desk-server.py` 를 고친 뒤에는 **5177 서버를 다시 띄워야** 새 경로가 생긴다(`desk.html` 은 요청마다 읽으므로 바로 반영).

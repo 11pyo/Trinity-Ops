@@ -39,11 +39,14 @@ ERD_DIR = os.path.join(ARCH, "erd-graph")
 HOST = "127.0.0.1"                                # ⛔ 바꾸지 말 것 — 설계 원칙 2
 
 # Ops Console 허브 — 다른 담당자 화면을 **읽기 전용**으로 내준다(고정 경로만 · 요청 경로는 파일 시스템에 닿지 않는다)
+DIAG_DIR = os.path.join(PROD, "diagnostics")
 HUB_PAGES = {
     "/archive": os.path.join(ARCH, "archive.html"),
     "/board": os.path.join(PROD, "task-board.html"),
     "/metrics": os.path.join(PROD, "metrics.html"),
     "/bot-metrics": os.path.join(PROD, "bot-metrics.html"),
+    "/kpi": os.path.join(DIAG_DIR, "latest.html"),
+    "/overview": os.path.join(ARCH, "trinity_overview.html"),
 }
 # 대시보드는 저장 서버(5178)로 원본을 덮어쓴다 — 허브에서 연 사본은 저장하지 않게 막는다(아래 _board_readonly)
 BOARD_BANNER = (
@@ -87,7 +90,7 @@ Q_MARK = "──── 추가 질문"
 NEED_INFO_MARK = "정확한 안내를 위해 아래 정보가 필요합니다"
 A_SPLIT = re.compile(r"\n\n──── 추가 답변 \(([^)]*)\) ────\n")
 ID_RE = re.compile(r"^INQ-\d{6}-\d{6}$")
-GRADES = ("맞음", "보완", "틀림")
+GRADES = ("맞음", "보완", "틀림", "제외")
 VERDICT_KO = {"answer": "확정 답변", "hold": "보류", "escalate": "에스컬레이션", "dev": "개발 요청"}
 DEFAULT_CODES = ["사실오류", "위험안내", "기존기능놓침", "용어노출", "과잉보류", "누락", "가독성", "기타"]
 MAX_TEXT = 4000
@@ -741,6 +744,13 @@ class Handler(BaseHTTPRequestHandler):
                 with io.open(page, encoding="utf-8") as f:
                     html = f.read()
                 return self._send(200, "text/html; charset=utf-8", _board_readonly(html) if path == "/board" else html)
+            diag_m = re.fullmatch(r"/diagnostics/(\d{4}-\d{2}-\d{2}_[^/\\]+\.html|index\.html|latest\.html)", unquote(path))
+            if diag_m:
+                dfile = os.path.join(DIAG_DIR, diag_m.group(1))
+                if os.path.dirname(os.path.abspath(dfile)) == os.path.abspath(DIAG_DIR) and os.path.isfile(dfile):
+                    with io.open(dfile, encoding="utf-8") as f:
+                        return self._send(200, "text/html; charset=utf-8", f.read())
+                return self._send(404, "text/plain; charset=utf-8", "화면 파일을 찾지 못했습니다.")
             data_key = unquote(path)
             if data_key in HUB_DATA:
                 if not os.path.isfile(HUB_DATA[data_key]):

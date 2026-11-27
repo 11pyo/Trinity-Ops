@@ -298,9 +298,12 @@ a{color:var(--oc-pt)} .oc-nav a{color:inherit}
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
-document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
-var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
-if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+var p=decodeURIComponent(location.pathname).replace(/\\/g,"/");var inDiag=!hub&&/\/diagnostics\/[^/]+\.html$/i.test(p);
+function rw(root){root.querySelectorAll("a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");if(hub){if(!dh){a.hidden=true;return;}a.setAttribute("href",dh);}});}
+rw(document);if(hub)document.addEventListener("DOMContentLoaded",function(){rw(document);});
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");
+var me=hub?location.pathname:p.split("/").pop();var t=hub?dh:a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/")||(hub&&dh==="/kpi"&&me.indexOf("/diagnostics/")===0)||(inDiag&&dh==="/kpi")||(!hub&&me==="desk.html"&&dh==="/"))a.setAttribute("aria-current","page");});})();</script>
 <div class="stickytop">
 <header>
   <h1>📋 운영 Task 대시보드 <small style="font-size:12px;font-weight:400">SAMPLE — 합성 표본 데이터</small></h1>
@@ -700,8 +703,8 @@ const INQ_STATUSES = ['접수','진행중','대기','완료'];
 const INQ_TYPES = ['단순문의','일반요청','긴급문의'];
 // 🤖 트리니티봇 답 판정 — 맞음/보완/틀림. 검증 장부(vacation/ledger.py)가 모아 정확도를 낸다(2026-09-11).
 //    트리니티봇 권한 확대(운영계까지)의 근거라, 트리니티봇이 답한 카드에만 판정 칸을 보인다. 현업 화면에는 나가지 않는다.
-var BOT_GRADES = ['맞음','보완','틀림'];
-var BOT_GRADE_CLS = {'맞음':'g-ok','보완':'g-part','틀림':'g-bad'};
+var BOT_GRADES = ['맞음','보완','틀림','제외'];
+var BOT_GRADE_CLS = {'맞음':'g-ok','보완':'g-part','틀림':'g-bad','제외':''};
 // 판정 이유 코드 — 보완·틀림이면 무엇이 문제였나. 메모는 글이라 집계가 안 된다(2026-09-30). 정본 = vacation/config.json 의 reason_codes
 // (log-inquiry.py --grade-code 와 같은 어휘 · tests/unit_metrics.py 가 셋을 대조한다)
 var BOT_CODES = ['사실오류','위험안내','기존기능놓침','용어노출','과잉보류','누락','가독성','기타'];

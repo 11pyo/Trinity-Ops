@@ -136,9 +136,12 @@ td[style*="#cbd5e1"],span[style*="#64748b"]{color:var(--oc-sub)!important}
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
-document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
-var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
-if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+var p=decodeURIComponent(location.pathname).replace(/\\/g,"/");var inDiag=!hub&&/\/diagnostics\/[^/]+\.html$/i.test(p);
+function rw(root){root.querySelectorAll("a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");if(hub){if(!dh){a.hidden=true;return;}a.setAttribute("href",dh);}});}
+rw(document);if(hub)document.addEventListener("DOMContentLoaded",function(){rw(document);});
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");
+var me=hub?location.pathname:p.split("/").pop();var t=hub?dh:a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/")||(hub&&dh==="/kpi"&&me.indexOf("/diagnostics/")===0)||(inDiag&&dh==="/kpi")||(!hub&&me==="desk.html"&&dh==="/"))a.setAttribute("aria-current","page");});})();</script>
 <header>
   <h1>📈 AI 협업 운영 실증지표</h1>
   <div class="sub">회사 SAP SD 운영 · 담당자 &nbsp;|&nbsp; 데이터 정본 <code>inquiry-log.js</code> (자동집계 — 로그 갱신 시 자동 반영)<br>

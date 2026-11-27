@@ -126,8 +126,8 @@ ap.add_argument("--ref",  default="", help="archive 앵커(선택, 예 #ts-accou
 ap.add_argument("--req",  default="", help="요청자·조직 (카드 코드 옆 칩으로 표시, 예: 홍길동·영업·고객사A)")
 ap.add_argument("--role", default="", help="요청자의 담당 업무 (예: 영업대표·영업지원·여신담당·재경) — 트리니티봇이 담당에 맞춰 답한다(2026-09-22~)")
 # 트리니티봇 답 판정 — 검증 장부(vacation/ledger.py)가 모아 정확도를 낸다(2026-09-11). 현업 화면에는 나가지 않는다.
-ap.add_argument("--grade", default="", choices=["", "맞음", "보완", "틀림"],
-                help="트리니티봇 답 판정: 맞음(그대로 줘도 됨)|보완(방향은 맞으나 덧붙일 것)|틀림(결론이 틀림)")
+ap.add_argument("--grade", default="", choices=["", "맞음", "보완", "틀림", "제외"],
+                help="트리니티봇 답 판정: 맞음(그대로 줘도 됨)|보완(방향은 맞으나 덧붙일 것)|틀림(결론이 틀림)|제외(중복·오발송 등 평가 제외)")
 ap.add_argument("--grade-note", default="", help="판정 메모 — 보완·틀림이면 무엇이 달랐는지")
 # 판정 이유 코드 — 메모는 글이라 집계가 안 된다. 코드로 남기면 장부가 유형별로 센다(2026-09-30). 정본 = vacation/config.json reason_codes
 # (없거나 못 읽으면 아래 기본값). 대시보드 task-board.html 의 BOT_CODES 와 같아야 한다 — tests/unit_metrics.py 가 대조한다.

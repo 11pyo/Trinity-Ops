@@ -136,9 +136,12 @@ details{color:var(--oc-ink)}
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
-document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){if(hub){if(!a.getAttribute("data-hub")){a.hidden=true;return;}a.setAttribute("href",a.getAttribute("data-hub"));}
-var me=hub?location.pathname:location.pathname.split("/").pop();var t=hub?a.getAttribute("data-hub"):a.getAttribute("href").split("/").pop();
-if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})();</script>
+var p=decodeURIComponent(location.pathname).replace(/\\/g,"/");var inDiag=!hub&&/\/diagnostics\/[^/]+\.html$/i.test(p);
+function rw(root){root.querySelectorAll("a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");if(hub){if(!dh){a.hidden=true;return;}a.setAttribute("href",dh);}});}
+rw(document);if(hub)document.addEventListener("DOMContentLoaded",function(){rw(document);});
+document.querySelectorAll(".oc-nav a[data-hub]").forEach(function(a){var dh=a.getAttribute("data-hub");
+var me=hub?location.pathname:p.split("/").pop();var t=hub?dh:a.getAttribute("href").split("/").pop();
+if(me===t||(hub&&me==="/"&&t==="/")||(hub&&dh==="/kpi"&&me.indexOf("/diagnostics/")===0)||(inDiag&&dh==="/kpi")||(!hub&&me==="desk.html"&&dh==="/"))a.setAttribute("aria-current","page");});})();</script>
 <header>
   <h1>봇 지표 — 문의 응대 품질</h1>
   <div class="sub" id="sub">담당자 부재중 문의를 1차 응대하는 트리니티봇이 「잘하고 있는가」를 재는 화면입니다 · 현업 문의만 집계(시험 문의 제외) · 맞음 · 보완 · 틀림 판정은 담당자가 합니다</div>
@@ -374,10 +377,10 @@ if(me===t||(hub&&me==="/"&&t==="/"))a.setAttribute("aria-current","page");});})(
       }).join('') + '</table>' : '<div class="foot">아직 실행 기록이 없습니다 — <code>python task-dashboard/vacation/bench/replay.py run</code></div>') + '</div>');
 
   // 판정 대기
-  var wait = (D.rows || []).filter(function (r) { return !r.manual && (!r.grade || r.stale); }).sort(function (a, b) { return a.first < b.first ? 1 : -1; });
+  var wait = (D.rows || []).filter(function (r) { return !r.manual && !r.excluded && (!r.grade || r.stale); }).sort(function (a, b) { return a.first < b.first ? 1 : -1; });
   if (wait.length) {
     html.push('<div class="sec"><h2>판정을 기다리는 답 <small style="font-weight:400;color:var(--mute)">(' + wait.length + '건)</small></h2>' +
-      '<p class="hint">문의 본문은 여기 없습니다 — 담당자 대시보드 ✏️수정 「🤖 트리니티봇 답 판정」에서 고르거나 <code>log-inquiry.py --id … --grade 맞음|보완|틀림</code>.</p><table>' +
+      '<p class="hint">문의 본문은 여기 없습니다 — 담당자 대시보드 ✏️수정 「🤖 트리니티봇 답 판정」에서 고르거나 <code>log-inquiry.py --id … --grade 맞음|보완|틀림|제외</code>.</p><table>' +
       '<tr><th>문의</th><th>유형</th><th>트리니티봇 판정</th><th>첫 답</th><th></th></tr>' +
       wait.slice(0, 30).map(function (r) {
         return '<tr><td><code>' + esc(r.id) + '</code>' + (r.test ? ' <span class="badge test">시험</span>' : '') + '</td><td>' + esc(r.type || '(미상)') + '</td><td>' + esc(VK[r.verdict] || r.verdict) +

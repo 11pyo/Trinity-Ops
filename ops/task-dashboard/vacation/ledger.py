@@ -41,6 +41,7 @@ import apply_answer as GATE                                     # noqa: E402
 DEFAULT_REASON_CODES = ["사실오류", "위험안내", "기존기능놓침", "용어노출", "과잉보류", "누락", "가독성", "기타"]
 
 GRADES = ("맞음", "보완", "틀림")
+EXCLUDE_GRADE = "제외"
 VERDICT_KO = {"answer": "답변", "dev": "개발 요청 정리", "escalate": "에스컬레이션", "hold": "보류"}
 FILE_NAME = "트리니티봇_검증장부.md"
 DATA_NAME = "bot-metrics-data.js"      # 지표 화면이 읽는 데이터(런타임 폴더 — 공유본 밖)
@@ -167,8 +168,9 @@ def build(cfg=None, merged=None, norm=None):
         bot = [e for e in es if e.get("source") != "manual"]                   # 감시자가 낸 답(출처가 없는 옛 기록도 트리니티봇 답으로 센다)
         use = bot or es                                                        # 수동 답뿐이면 그것으로 — 아래에서 manual 로 표시
         first_real = next((e for e in use if not e.get("fallback")), None)      # 시스템이 낸 보류는 「첫 답」이 아니다
-        g = (r.get("botgrade") or "").strip()
-        g = g if g in GRADES else ""
+        raw_g = (r.get("botgrade") or "").strip()
+        excluded = (raw_g == EXCLUDE_GRADE)
+        g = raw_g if raw_g in GRADES else ""
         at = (r.get("botgrade_at") or "").strip()
         last = use[-1].get("ts", "")
         rows.append({
@@ -181,10 +183,11 @@ def build(cfg=None, merged=None, norm=None):
             "first": use[0].get("ts", ""),
             "last": last,
             "grade": g,
+            "excluded": excluded,
             "note": (r.get("botgrade_note") or "").strip(),
             "graded_at": at,
             # 판정 뒤에 트리니티봇 답이 또 달렸다(추가 질문에 대한 답) — 판정이 그 답까지 본 것이 아니다
-            "stale": bool(g and at and last[:16] > at[:16]),
+            "stale": bool((g or excluded) and at and last[:16] > at[:16]),
             "q": (r.get("q") or "").replace("\n", " ").strip()[:80],
             # 2026-09-30~ 답 기록에 붙는 출처 — 옛 기록엔 없다(빈 값 = 출처 미상 · 그대로 트리니티봇 답으로 센다)
             "source": use[-1].get("source") or "",
@@ -406,8 +409,9 @@ def _by(rows, keyf):
 
 def summarize(rows):
     manual = [r for r in rows if r.get("manual")]                 # 트리니티봇 답이 아니다 — 정확도 · 판정 대기에서 뺀다
-    real = [r for r in rows if not r["test"] and not r.get("manual")]
-    test = [r for r in rows if r["test"] and not r.get("manual")]
+    excluded = [r for r in rows if r.get("excluded") and not r.get("manual")]   # 중복·오발송 등 평가 제외
+    real = [r for r in rows if not r["test"] and not r.get("manual") and not r.get("excluded")]
+    test = [r for r in rows if r["test"] and not r.get("manual") and not r.get("excluded")]
     by_v = _by(real, lambda r: r["verdicts"][-1])                  # 마지막 판정 종류 기준
     by_m = _by(real, lambda r: "(시스템 보류)" if r.get("fallback") else (r.get("model") or ""))   # "" = 모델 기록이 없는 옛 답
     by_t = _by(real, lambda r: r.get("type") or "(미상)")
@@ -418,7 +422,7 @@ def summarize(rows):
         if r["grade"] in ("보완", "틀림"):
             for c in r.get("codes") or []:
                 codes[c] = codes.get(c, 0) + 1
-    return {"real": _count(real), "test": _count(test), "manual": _count(manual),
+    return {"real": _count(real), "test": _count(test), "manual": _count(manual), "excluded": len(excluded),
             "by_verdict": {k: _count(v) for k, v in by_v.items()},
             "by_model": {k: _count(v) for k, v in by_m.items()},
             "by_type": {k: _count(v) for k, v in by_t.items()},
@@ -429,7 +433,7 @@ def summarize(rows):
             "latency_by_model": {k: _lat(v) for k, v in _by(real, lambda r: r.get("lat_model") or "").items()},
             "ref_check": _tally(r.get("ref_check") for r in real if not r.get("fallback")),
             "by_fp": {k: _count(v) for k, v in _by([r for r in real if not r.get("fallback")], lambda r: r.get("fp") or "").items() if k},
-            "waiting": [r["id"] for r in rows if not r.get("manual") and (not r["grade"] or r["stale"])]}
+            "waiting": [r["id"] for r in rows if not r.get("manual") and not r.get("excluded") and (not r["grade"] or r["stale"])]}
 
 
 def _pop_label(s):
@@ -460,7 +464,7 @@ def stage_progress(rows, cfg):
     if not stages:
         return None
     # ⚠ 1단계는 「조건 없음」이어야 한다(지금 단계의 출발점) — 조건이 있는 1단계가 미충족이어도 지금 단계는 1 로 표시된다.
-    real = [r for r in rows if not r["test"] and not r.get("manual") and r["grade"]]
+    real = [r for r in rows if not r["test"] and not r.get("manual") and not r.get("excluded") and r["grade"]]
     real.sort(key=lambda r: r["graded_at"] or r["first"])
     n_all = len(real)
     ok_all = sum(1 for r in real if r["grade"] == "맞음")
@@ -615,6 +619,8 @@ def render(rows, s, prog=None, ops=None, replay=None):
     m = s.get("manual") or {}
     if m.get("answered"):
         L += ["감시자가 아닌 곳(세션에서 직접 · 시험)에서 게이트로 넣은 답 %d건은 트리니티봇 정확도에 넣지 않습니다." % m["answered"], ""]
+    if s.get("excluded"):
+        L += ["중복·오발송 등 평가 제외(`제외`)로 분류한 %d건은 정확도·승격 기준에서 제외합니다." % s["excluded"], ""]
     if prog:
         L += ["## 권한 확대 단계 — 현업 문의 판정 기준 (승격은 담당자가 정합니다)", "",
               "지금 **%d단계** · 현업 판정 %d건 · 정확도 %s" % (prog["current"], prog["graded"], _pct(prog["accuracy"])), "",
@@ -632,7 +638,7 @@ def render(rows, s, prog=None, ops=None, replay=None):
                   " · ".join("%d단계 %d건" % (x["no"], x["need_n0"]) for x in gaps) +
                   " 이 필요합니다. 지금 기준의 판정 건수(" + " · ".join("%d" % x["need"] for x in gaps) +
                   ")는 「그 정도는 봐야 한다」는 속도 관문이지 안전 증명이 아닙니다.", ""]
-    real_rows = [r for r in rows if not r["test"] and not r.get("manual") and not r.get("fallback")]
+    real_rows = [r for r in rows if not r["test"] and not r.get("manual") and not r.get("excluded") and not r.get("fallback")]
     if real_rows:
         L.append(render_md(to_js_obj(real_rows)))
     if s["by_verdict"]:
@@ -708,7 +714,7 @@ def render(rows, s, prog=None, ops=None, replay=None):
                 h.get("critical", "—")))
         L += ["", "사례 점수는 옛 벤치에서 답을 보기 전에 고정한 「검증」 사례 기준이 우선입니다 — 초안 기준 사례는 참고용입니다(vacation/bench/README.md). "
                   "「답 없음」은 트리니티봇이 답을 내지 않아 0점으로 평균에 들어간 사례, 「제외」는 실행 실패 · 채점 실패라 점수에서 뺀 사례입니다.", ""]
-    wait = [x for x in rows if not x.get("manual") and (not x["grade"] or x["stale"])]
+    wait = [x for x in rows if not x.get("manual") and not x.get("excluded") and (not x["grade"] or x["stale"])]
     if wait:
         L += ["## 판정을 기다리는 답 (%d건)" % len(wait), ""]
         for x in wait:
@@ -734,7 +740,7 @@ def render(rows, s, prog=None, ops=None, replay=None):
                  % (x["id"], " (시험)" if x["test"] else "", x["req"],
                     " → ".join(VERDICT_KO.get(v, v) for v in x["verdicts"]),
                     ((x.get("model") or "?") + (" · 수동" if x.get("manual") else "")), x["first"][:16],
-                    (x["grade"] + (" ⚠재판정" if x["stale"] else "")) if x["grade"] else "판정 전",
+                    ((EXCLUDE_GRADE if x.get("excluded") else x["grade"]) + (" ⚠재판정" if x["stale"] else "")) if (x["grade"] or x.get("excluded")) else "판정 전",
                     x["graded_at"], x["note"].replace("|", "/")))
     L.append("")
     return "\n".join(L)
@@ -748,17 +754,17 @@ def export_js(rows, s, prog, cfg, ops=None, replay=None):
     rt = cfg["runtime_dir"]
     data = {
         "generated": time.strftime("%Y-%m-%d %H:%M"),
-        "real": s["real"], "test": s["test"], "manual": s["manual"],
+        "real": s["real"], "test": s["test"], "manual": s["manual"], "excluded": s.get("excluded", 0),
         "prog": prog, "by_verdict": s["by_verdict"], "by_model": s["by_model"], "by_type": s["by_type"],
         "by_role": s["by_role"], "by_week": s["by_week"], "codes": s["codes"],
         "latency": s["latency"], "latency_by_model": s["latency_by_model"],
         "ops": ops, "replay": replay,
         "reason_codes": (cfg.get("reason_codes") or DEFAULT_REASON_CODES),
-        "verdictMatrix": to_js_obj([r for r in rows if not r["test"] and not r.get("manual") and not r.get("fallback")]),
+        "verdictMatrix": to_js_obj([r for r in rows if not r["test"] and not r.get("manual") and not r.get("excluded") and not r.get("fallback")]),
         "ref_check": s.get("ref_check") or {}, "by_fp": s.get("by_fp") or {},
         "rows": [{"id": x["id"], "type": x["type"], "role": x.get("role") or "", "verdict": x["verdicts"][-1],
                   "expected": x.get("expected") or "",
-                  "n_answers": len(x["verdicts"]), "grade": x["grade"], "codes": x.get("codes") or [],
+                  "n_answers": len(x["verdicts"]), "grade": (EXCLUDE_GRADE if x.get("excluded") else x["grade"]), "excluded": bool(x.get("excluded")), "codes": x.get("codes") or [],
                   "model": x.get("model") or "", "source": x.get("source") or "", "manual": bool(x.get("manual")),
                   "fallback": bool(x.get("fallback")), "test": bool(x["test"]), "stale": bool(x["stale"]),
                   "first": x["first"][:16], "sec": x.get("sec"), "cost": x.get("cost_share"),
