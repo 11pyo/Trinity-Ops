@@ -355,6 +355,41 @@ def answer_turns(a):
     return 0
 
 
+def answer_turns_all(a):
+    """봇 답과 담당자 직접 답을 모두 포함한 실제 답변 턴 수(접수 확인 안내만 있으면 0)."""
+    a = (a or "").strip()
+    if not a:
+        return 0
+    first = a.split(A_MARK)[0].strip()
+    if not first:
+        return 0
+    if first.startswith(MARK_ACK) and "⏱" not in first and "AI 1차 안내" not in first:
+        return 0
+    return 1 + a.count(A_MARK)
+
+
+def works_handoff_active(rec):
+    """담당자 직접 등록(운영담당)·웹접수 건에 웍스 메신저 후속 질문이 인계(works_handoff_turn)되어
+    아직 해당 턴의 답변이 달리지 않은 상태인지 판정한다(2026-11-27 중복 방지)."""
+    if not rec:
+        return False
+    ht = rec.get("works_handoff_turn")
+    if not isinstance(ht, int) or ht <= 0:
+        return False
+    qt = q_turns(rec)
+    return qt <= ht and answer_turns_all(rec.get("a") or "") < qt
+
+
+def is_messenger_turn(rec):
+    """이번 턴의 답이 웍스 메신저로 나갈 건인지(원래 웍스 건 또는 웍스 핸드오프 턴)."""
+    if not rec:
+        return False
+    if rec.get("by") == "웍스메신저":
+        return True
+    ht = rec.get("works_handoff_turn")
+    return isinstance(ht, int) and ht > 0 and q_turns(rec) <= ht
+
+
 _CLOSE_LINE_RX = re.compile(r"케이스 닫기|더 문의하실 내용이 있으면 추가 질문으로 남겨")
 
 
@@ -363,11 +398,16 @@ def _drop_close_ask(body):
     return "\n".join(ln for ln in body.split("\n") if not _CLOSE_LINE_RX.search(ln)).rstrip()
 
 
-def compose(verdict, public):
-    """표기·꼬리말·에스컬레이션을 강제로 붙인다. 에이전트가 빠뜨릴 수 없다."""
+MARK_MESSENGER = "[%s · AI]" % BOT   # 웍스 메신저 표기(2026-11-26 소유자 지시)
+
+
+def compose(verdict, public, messenger=False):
+    """표기·꼬리말·에스컬레이션을 강제로 붙인다. 에이전트가 빠뜨릴 수 없다.
+    messenger=True(웍스 메신저 건): 대화체이므로 표기만 [트리니티봇 · AI]로 붙이고, 긴급 연락처·종결 질문·부재 안내·꼬리말을 붙이지 않는다
+    (2026-11-27 소유자 지적: 감기 안부에 「업무가 멈출 정도로 급하면 운영팀장 팀장께」가 붙음)."""
     body = (public or "").strip()
     # 에이전트가 표기를 이미 붙였으면 중복시키지 않는다
-    for m in (MARK_AI, MARK_ACK):
+    for m in (MARK_AI, MARK_ACK, MARK_MESSENGER):
         if body.startswith(m):
             body = body[len(m):].strip()
     # 옛 표기(「[담당자 부재중 · …]」 등)를 붙여 와도 떼어 낸다 — 첫 줄이 봇 표기뿐이면 버린다
@@ -376,6 +416,9 @@ def compose(verdict, public):
         body = rest.strip()
     # 동일 문장을 모델이 넣어도 게이트에서 답변당 한 번만 붙인다.
     body = body.replace(AWAY_NOTICE, "").strip()
+    if messenger:
+        body = body.replace(ESCALATE, "").strip() or STD_FALLBACK
+        return MARK_MESSENGER + "\n" + body + "\n⏱" + time.strftime("%Y-%m-%d %H:%M")
     if verdict == "hold":
         body = body or STD_HOLD_DECIDED
         head = MARK_ACK
@@ -418,22 +461,23 @@ def apply_one(iid, verdict, public, note="", ref="", cfg=None, dry=False, meta=N
     #    진짜 답변이 「추가 답변」으로 취급돼 **필수 표기가 떨어져 나간다**(2026-09-10 실측).
     #    → 앞에 **실제 답(판정 무관 — hold 답 포함)이 있을 때만** 이어붙인다. 접수 확인뿐이면 그 자리를 채운다.
     #    (예전엔 「AI 1차 안내」 글자로만 가려, hold 답 위의 추가 답변이 hold 답을 덮어썼다 — 리뷰 #7)
-    appending = answer_turns(prior) > 0
+    appending = (answer_turns(prior) > 0) or (works_handoff_active(rec0) and answer_turns_all(prior) > 0)
 
     # ⑤-a **이번 턴의 글만** 검증한다.
     #    ⚠️ 누적된 전체를 검증하면 안 된다 — 앞선 답변에 내부 메모가 길게 붙어 있으면
     #       「많이 줄었다」로 오판해 **대화 전체를 표준문구로 갈아치운다**(2026-09-10 실측 사고).
     #       앞 대화는 이미 검증을 통과해 저장된 것이다. 다시 판단하지 않는다.
-    block = compose(verdict, public)
+    messenger = is_messenger_turn(rec0)
+    block = compose(verdict, public, messenger)
     shown_new = ix._strip_internal(block)
     leaked = _LEAK_ID_RX.findall(shown_new)
     if leaked:
         journal(cfg, {"event": "card_leak_blocked", "id": iid, "matched": leaked})
-        block = compose(verdict, "")
+        block = compose(verdict, "", messenger)
         shown_new = ix._strip_internal(block)
     if not shown_new.strip():
         journal(cfg, {"event": "render_empty", "id": iid})
-        block = compose(verdict, STD_FALLBACK)
+        block = compose(verdict, STD_FALLBACK, messenger)
         shown_new = ix._strip_internal(block)
     if not shown_new.strip():
         return False, "", "공개 렌더가 비어 사전 차단했습니다"
@@ -508,8 +552,8 @@ def ack(iid, cfg=None):
     #    위에 쓰면 그 답이 화면에서 사라지고 다음 답이 엉뚱한 질문에 붙는다(리뷰 #2 — 추가 질문이
     #    붙은 옛 카드에서 실제로 재현됨). 이미 답이 있으면 쓰지 않고 「생략」을 돌려준다.
     rec = _intake()._read_log().get(iid) or {}
-    if rec.get("by") == "웍스메신저":
-        # 웍스 메신저 건은 웹 화면 안내([알림 켜기])가 맞지 않고, 상대에게는 최종 답만 보낸다(2026-11-25).
+    if is_messenger_turn(rec):
+        # 웍스 메신저 건(인계 건 포함)은 웹 화면 안내([알림 켜기])가 맞지 않고, 상대에게는 최종 답만 보낸다(2026-11-25).
         journal(cfg, {"event": "ack_skip_messenger", "id": iid})
         return "skip"
     cur = rec.get("a") or ""

@@ -158,6 +158,8 @@ ap.add_argument("--req-score", type=int, default=None, choices=[1, 2, 3, 4, 5],
 ap.add_argument("--req-feedback", default="",
                 help="문의자가 케이스를 닫을 때 남긴 한줄 피드백")
 ap.add_argument("--rounds", type=int, default=None, help="1차 답변 전 도구 라운드 수(병렬 호출 1묶음 = 1)")
+ap.add_argument("--works-handoff", dest="works_handoff", action="store_true",
+                help="담당자 직접 등록·웹접수 건에 웍스 메신저 후속 질문이 인계됨을 명시 — 해당 턴만 트리니티봇 1차 추가 답변 허용")
 x = ap.parse_args()
 
 if x.status and x.status not in VALID:
@@ -206,6 +208,25 @@ elif x.id:
         obj["bot_expected_verdict"] = x.expected_verdict
     if x.rounds is not None:
         obj["rounds"] = x.rounds
+    if x.works_handoff:
+        _qsrc = x.q
+        if not _qsrc and os.path.exists(LOG):
+            try:
+                with open(LOG, encoding="utf-8") as _f:
+                    _cur = {}
+                    for _ln in _f:
+                        if "window.INQUIRY_LOG.push(" in _ln:
+                            _s = _ln.find("{")
+                            if _s >= 0:
+                                _o = json.loads(_ln[_s:].rstrip().rstrip(";").rstrip(")"))
+                                if _o.get("id") == x.id:
+                                    _cur.update(_o)
+                    _qsrc = _cur.get("q") or ""
+            except (OSError, ValueError):
+                _qsrc = ""
+        obj["works_handoff_turn"] = 1 + (_qsrc or "").count("──── 추가 질문")
+    elif x.a and not x.a.lstrip().startswith(("[트리니티봇", "[담당자 부재중")) and "──── 추가 답변" not in x.a:
+        obj["works_handoff_turn"] = 0
     if len(obj) == 1:
         sys.exit("[오류] --id 만으로는 변경할 게 없음 (--status/--done/--a/--ref 등 필요)")
     if x.done and x.rounds is None:
