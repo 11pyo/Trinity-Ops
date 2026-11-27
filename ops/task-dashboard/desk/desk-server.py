@@ -29,7 +29,9 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote, urlparse
+import hmac
+import importlib.util
+from urllib.parse import parse_qs, unquote, urlparse, urlsplit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROD = os.path.dirname(HERE)                      # task-dashboard
@@ -49,13 +51,56 @@ HUB_PAGES = {
     "/overview": os.path.join(ARCH, "trinity_overview.html"),
     "/protocol": os.path.join(PROD, "protocol.html"),
 }
-# 대시보드는 저장 서버(5178)로 원본을 덮어쓴다 — 허브에서 연 사본은 저장하지 않게 막는다(아래 _board_readonly)
+# 대시보드 로컬 저장(구 5178)은 5177 에 통합(2026-11-27) — 허브 /board 는 7중 보호로 원본 덮어쓰기를 원천 차단한다
 BOARD_BANNER = (
-    '<div data-noexport role="note" style="position:sticky;top:0;z-index:9999;background:#fff4dc;color:#7a5200;'
+    '<div data-noexport data-readonly-board="1" role="note" style="position:sticky;top:0;z-index:9999;background:#fff4dc;color:#7a5200;'
     'border-bottom:1px solid #e6c97a;padding:8px 14px;font:13px/1.5 \'Malgun Gothic\',system-ui,sans-serif">'
     '보기 전용 — 수정·저장은 제어판에서 연 대시보드에서 하십시오. 여기서 💾저장을 눌러도 원본에 쓰지 않습니다.</div>'
-    '<script data-noexport>try{window.showSaveFilePicker=undefined;}catch(e){}</script>'
+    '<script data-noexport>try{window.__SD_BOARD_READONLY__=true;window.BOARD_SAVER_TOKEN="";window.showSaveFilePicker=undefined;}catch(e){}</script>'
 )
+SAVER_ALLOWED_ORIGINS = {"null"}                 # file:// 로 연 대시보드만 허용(웹 Origin · http://127.0.0.1:5177 모두 차단)
+MAX_SAVER_BODY = 32 * 1024 * 1024
+_PROTO_LOCK = threading.Lock()
+
+
+def _load_board_saver():
+    """task-dashboard/board-saver.py 의 검증·백업·원자적 쓰기 함수를 재사용한다."""
+    p = os.path.join(PROD, "board-saver.py")
+    if not os.path.isfile(p):
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("_sd_board_saver", p)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception as e:
+        sys.stdout.write("  [!] board-saver 모듈 로드 실패: %s\n" % e)
+        return None
+
+
+_BS = _load_board_saver()
+
+
+def _maybe_rebuild_protocol():
+    """트리니티봇_대응_프로토콜.md 또는 설정이 protocol.html 보다 새로우면 즉시 재생성한다."""
+    md_p = os.path.join(PROD, "트리니티봇_대응_프로토콜.md")
+    html_p = os.path.join(PROD, "protocol.html")
+    bld_p = os.path.join(ARCH, "tools", "build_protocol_html.py")
+    if not (os.path.isfile(md_p) and os.path.isfile(bld_p)):
+        return
+    watch = [md_p, os.path.join(PROD, "vacation", "config.json"), r"C:\trinitybot-resume\works-messenger\config.json"]
+    newest = max((os.path.getmtime(x) for x in watch if os.path.isfile(x)), default=0.0)
+    cur = os.path.getmtime(html_p) if os.path.isfile(html_p) else 0.0
+    if cur >= newest:
+        return
+    with _PROTO_LOCK:
+        cur2 = os.path.getmtime(html_p) if os.path.isfile(html_p) else 0.0
+        if cur2 >= newest:
+            return
+        try:
+            subprocess.run([sys.executable, "-B", bld_p], cwd=ARCH, capture_output=True, timeout=15)
+        except Exception as e:
+            sys.stdout.write("  [!] protocol.html 자동 재생성 실패: %s\n" % e)
 
 try:
     if ERD_DIR not in sys.path:
@@ -147,7 +192,8 @@ HUB_DATA = {
 
 
 def _board_readonly(html):
-    """허브에서 내주는 대시보드에 「보기 전용」 띠를 넣고 브라우저 파일 저장을 끈다(원본 파일은 건드리지 않는다)."""
+    """허브에서 내주는 대시보드에 「보기 전용」 띠를 넣고 토큰·로컬저장·파일저장 경로를 전부 차단한다."""
+    html = re.sub(r"<script[^>]+_saver_token\.js[^>]*>\s*</script>", "", html, flags=re.I)
     m = re.search(r"<body[^>]*>", html, re.I)
     return html[:m.end()] + BOARD_BANNER + html[m.end():] if m else BOARD_BANNER + html
 
@@ -705,11 +751,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        if self.path != "/report":
+        req_path = urlparse(self.path).path
+        if req_path != "/report":
+            # /board 보기 전용 사본은 connect-src 'none' 으로 브라우저 수준에서 fetch/XHR(자기 자신 5177 포함) 원천 차단
+            conn_src = "'none'" if req_path == "/board" else "'self'"
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
-                "script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+                "default-src 'self'; connect-src %s; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" % conn_src,
             )
         self.end_headers()
         self.wfile.write(body)
@@ -721,10 +770,62 @@ class Handler(BaseHTTPRequestHandler):
         # [SECURE] Host allow-list - blocks DNS rebinding against this local write API (Category 1)
         return (self.headers.get("Host") or "").lower() in ("127.0.0.1:%d" % PORT, "localhost:%d" % PORT)
 
+    def _send_saver_json(self, code, obj):
+        data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Vary", "Origin")
+        origin = self.headers.get("Origin")
+        if origin in SAVER_ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Board-Saver")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _saver_guard(self):
+        """통합 보드 저장 API 전용 7중 보안 관문: 루프백 + Host + file://(Origin null) 전용 + same-origin/HTTP Referer 차단."""
+        if self.client_address[0] not in ("127.0.0.1", "::1") or not self._host_ok():
+            self._send_saver_json(403, {"ok": False, "err": "로컬 전용"})
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in SAVER_ALLOWED_ORIGINS:
+            self._send_saver_json(403, {"ok": False, "err": "허용되지 않은 출처 — 파일로 연 대시보드에서만 저장할 수 있습니다"})
+            return False
+        sfs = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if sfs == "same-origin":
+            self._send_saver_json(403, {"ok": False, "err": "허브 보기 전용 화면에서는 원본을 저장할 수 없습니다"})
+            return False
+        ref = (self.headers.get("Referer") or "").strip().lower()
+        if ref.startswith(("http://", "https://")):
+            self._send_saver_json(403, {"ok": False, "err": "웹 페이지 출처에서는 원본을 저장할 수 없습니다"})
+            return False
+        return True
+
+    def do_OPTIONS(self):
+        path = urlparse(self.path).path
+        if path in ("/ping", "/save/board", "/save/inquiry"):
+            if self._saver_guard():
+                self._send_saver_json(200, {"ok": True})
+            return
+        self._send(405, "text/plain; charset=utf-8", "허용되지 않은 메서드입니다.")
+
     def do_GET(self):
         if not self._host_ok():
             return self._send(403, "text/plain; charset=utf-8", "허용되지 않은 주소입니다.")
         path = urlparse(self.path).path
+        # ⛔ _saver_token.js 는 어떠한 경로로도 절대 HTTP 서빙 금지
+        if "_saver_token" in unquote(path).lower():
+            return self._send(403, "text/plain; charset=utf-8", "접근이 금지된 파일입니다.")
+        if path == "/ping" and not TEST and _BS is not None:
+            if self._saver_guard():
+                self._send_saver_json(200, {"ok": True, "board": _BS.BOARD, "inquiry": _BS.INQ, "version": 2, "merged_on": PORT})
+            return
         try:
             # [SECURE] Fixed routes only - no request path reaches the filesystem (Category 1)
             if path in ("/", "/index.html"):
@@ -739,6 +840,8 @@ class Handler(BaseHTTPRequestHandler):
                 with io.open(erd_html, encoding="utf-8") as f:
                     return self._send(200, "text/html; charset=utf-8", f.read())
             if path in HUB_PAGES:
+                if path == "/protocol":
+                    _maybe_rebuild_protocol()
                 page = HUB_PAGES[path]
                 if not os.path.isfile(page):
                     return self._send(404, "text/plain; charset=utf-8", "화면 파일을 찾지 못했습니다.")
@@ -774,6 +877,34 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, "text/plain; charset=utf-8", "없는 경로입니다.")
 
     def do_POST(self):
+        path = urlparse(self.path).path
+        if path in ("/save/board", "/save/inquiry"):
+            if TEST or _BS is None:
+                return self._send_saver_json(403, {"ok": False, "err": "시험 모드 또는 저장 모듈 미로드 — 저장 차단"})
+            if not self._saver_guard():
+                return
+            if self.headers.get("X-Board-Saver") != "1":
+                return self._send_saver_json(400, {"ok": False, "err": "헤더 누락 — 대시보드에서만 저장할 수 있습니다"})
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length <= 0 or length > MAX_SAVER_BODY:
+                    return self._send_saver_json(400, {"ok": False, "err": "본문 크기 비정상"})
+                body = self.rfile.read(length).decode("utf-8")
+            except Exception as e:
+                return self._send_saver_json(400, {"ok": False, "err": "본문 수신 실패: %s" % e})
+            # 토큰 검사는 본문을 다 읽은 뒤에 수행(브라우저 조기 연결끊김 오판 방지)
+            given = (parse_qs(urlsplit(self.path).query).get("t") or [""])[0]
+            want = _BS._read_token()
+            if not want or not hmac.compare_digest(given.encode("utf-8"), want.encode("utf-8")):
+                return self._send_saver_json(403, {"ok": False, "err": "저장 토큰이 맞지 않습니다 — 대시보드를 새로고침(F5)한 뒤 다시 저장하세요"})
+            try:
+                ok, res = _BS.save_board(body) if path == "/save/board" else _BS.save_inquiry(body)
+            except Exception as e:
+                sys.stdout.write("  [!] %s 저장 실패: %s\n" % (path, e))
+                return self._send_saver_json(500, {"ok": False, "err": "저장 중 오류가 발생했습니다"})
+            if ok:
+                return self._send_saver_json(200, dict({"ok": True}, **res))
+            return self._send_saver_json(422, {"ok": False, "err": res})
         if not self._host_ok():
             return self._json({"ok": False, "error": "허용되지 않은 주소입니다."}, 403)
         # [SECURE] JSON-only, same-origin / X-Requested-With and Sec-Fetch-Site check (Category 1, CSRF)
@@ -813,6 +944,11 @@ def main():
     if not os.path.exists(HELPER):
         print("  [X] log-inquiry.py 를 찾지 못했습니다: %s" % HELPER)
         return 1
+    if not TEST and _BS is not None:
+        try:
+            _BS.ensure_token()
+        except Exception as e:
+            print("  [!] 보드 저장 토큰 초기화 실패: %s" % e)
     try:
         srv = SingleServer((HOST, PORT), Handler)
     except OSError as e:

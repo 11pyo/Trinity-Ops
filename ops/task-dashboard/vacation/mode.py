@@ -345,7 +345,7 @@ def mode_on():
     print("  런타임 : %s" % RT)
 
     print("")
-    print("[1/3] 두 서버 — 접수 창구(5179) · 대시보드 저장(5178)")
+    print("[1/3] 2개 운영 서버 — 접수 창구(5179) · 통합 데스크·저장(5177)")
     print("  (휴가모드가 켜고 지킵니다 — 휴가 중 죽으면 감시자가, 재부팅 뒤엔 로그인 시 재개가 되살립니다)")
     ok, note = _start_servers()
     if not ok:
@@ -431,7 +431,7 @@ def mode_off():
     if not ok:
         print("  ⚠ 원복에 실패했습니다. 절전·Windows Update 설정을 직접 확인해 주십시오.")
     print("")
-    print("  · 두 서버(접수 5179 · 저장 5178)는 끄지 않고 둡니다 — 복귀 직후에도 현업이 트리니티봇 답을 다시 보고")
+    print("  · 2개 서버(접수 5179 · 통합 데스크·저장 5177)는 끄지 않고 둡니다 — 복귀 직후에도 현업이 트리니티봇 답을 다시 보고")
     print("    추가 질문을 남길 수 있게. 부팅 자동시작은 없으니 다음 재부팅 때 꺼집니다(바로 끄려면 제어판 서버 카드 「종료」).")
 
     path = report(st)
@@ -878,7 +878,8 @@ def status():
         "baseline_id": base,
         "watcher_pids": _watcher_running(),
         "intake_up": _port_alive(5179) and SRV.http_ok(5179),      # 포트만이 아니라 실제 응답까지(2026-10-08)
-        "saver_up": _port_alive(5178) and SRV.http_ok(5178),
+        "desk_up": _port_alive(5177) and SRV.http_ok(5177),
+        "saver_up": _port_alive(5177) and SRV.http_ok(5177, "/ping"),
         "new_since_start": len(new),
         "open_items": len(openn),
         "answered_total": st.get("answered_total", 0),

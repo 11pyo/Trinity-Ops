@@ -295,6 +295,7 @@ a{color:var(--oc-pt)} .oc-nav a{color:inherit}
   <a href="../erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
   <a href="../task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
   <a href="../task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
+  <a href="../task-dashboard/protocol.html" data-hub="/protocol">대응 프로토콜</a>
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
@@ -555,7 +556,7 @@ function exportJSON(){
 // 브라우저 File System Access API 는 보안상 첫 저장·브라우저 재시작마다 사용자 승인을 요구해
 // "묻지 않는 덮어쓰기"가 원천적으로 불가능하다. 그래서 로컬 서버(127.0.0.1:5178)가 대신 파일에 쓴다.
 // 서버가 꺼져 있으면 아래 FSA 경로로 자동 폴백 → 기존 사용법 그대로.
-const SAVER_URL = 'http://127.0.0.1:5178';
+const SAVER_URL = 'http://127.0.0.1:5177';
 let _saverUp = null;                        // null=미확인 / true=가동 / false=꺼짐
 async function _saverPing(){
   try{
@@ -568,7 +569,8 @@ async function _saverPing(){
 // 저장 시도. {ok} 성공 / {refused:true} 서버는 살아있는데 거부(형식·크기 이상 → 폴백 금지) / {refused:false} 서버 꺼짐
 async function _saverSave(path, body){
   try{
-    // 쓰기 토큰(_saver_token.js · 같은 폴더) — 외부 웹페이지의 위장 저장 차단(2026-11-17). 옛 서버는 ?t= 를 무시해 그대로 동작.
+    if (window.__SD_BOARD_READONLY__) return {ok:false, err:'보기 전용 화면에서는 원본을 저장할 수 없습니다'};
+    // 쓰기 토큰(_saver_token.js · 같은 폴더) — 외부 웹페이지의 위장 저장 차단(2026-11-17).
     const tok = (typeof window.BOARD_SAVER_TOKEN === 'string') ? window.BOARD_SAVER_TOKEN : '';
     const r = await fetch(SAVER_URL + path + (tok ? ('?t=' + encodeURIComponent(tok)) : ''), {
       method:'POST',

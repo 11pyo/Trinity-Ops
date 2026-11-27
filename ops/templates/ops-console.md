@@ -1,6 +1,6 @@
 # Ops Console — 공통 색 이름(토큰) · 위쪽 메뉴 규격 (정본)
 
-> 2026-11-17 도입(2026-11-27 8개 탭 통합). 담당자용 화면(문의 데스크 · 대시보드 · 아카이브 · ERD · 지표 2종 · KPI 진단 성적표 · 트리니티봇 종합소개서)이 **같은 색 이름과 같은 위쪽 메뉴**를 쓴다.
+> 2026-11-17 도입(2026-11-27 9개 탭 통합). 담당자용 화면(문의 데스크 · 대시보드 · 아카이브 · ERD · 지표 2종 · KPI 진단 성적표 · 트리니티봇 종합소개서 · 대응 프로토콜)이 **같은 색 이름과 같은 위쪽 메뉴**를 쓴다.
 > 각 화면은 단독 실행형이라 아래 CSS·마크업을 **각 파일(또는 그 생성기 · 템플릿)에 그대로 복사**한다 — 고칠 때는 이 문서를 먼저 고치고 각 화면에 옮긴다.
 > 현업 화면(문의창 5179)에는 이 메뉴를 넣지 않는다(내부 도구 노출 금지).
 
@@ -36,6 +36,7 @@
   <a href="{R}erd-graph/erd-viewer.html" data-hub="/erd">ERD·온톨로지</a>
   <a href="{R}task-dashboard/bot-metrics.html" data-hub="/bot-metrics">봇 지표</a>
   <a href="{R}task-dashboard/metrics.html" data-hub="/metrics">협업 지표</a>
+  <a href="{R}task-dashboard/protocol.html" data-hub="/protocol">대응 프로토콜</a>
 </nav>
 <script>/* Ops Console 메뉴: 문의 데스크 서버(5177)로 열었으면 서버 주소로, 파일로 열었으면 파일 상대 경로로 */
 (function(){var h=location.host;var hub=["127.0.0.1:5177","localhost:5177","127.0.0.1:5187","localhost:5187"].indexOf(h)>=0;
@@ -49,4 +50,4 @@ if(me===t||(hub&&me==="/"&&t==="/")||(hub&&dh==="/kpi"&&me.indexOf("/diagnostics
 
 - `{R}` = 그 화면 파일에서 아카이브 루트까지의 상대 경로: `archive.html` · `trinity_overview.html` → 빈 문자열, `task-dashboard/*.html` · `erd-graph/erd-viewer.html` → `../`, `task-dashboard/desk/desk.html` · `task-dashboard/diagnostics/*.html` → `../../`.
 - 대시보드는 💾저장 때 화면째 저장하므로 메뉴에 `data-noexport` 를 붙여도 **저장본에 남지 않는다** → 대시보드에서는 `data-noexport` 를 **빼고** 넣는다.
-- 문의 데스크(5177)가 허브: `/board` `/archive` `/erd` `/bot-metrics` `/metrics` `/kpi` `/overview` (및 `/diagnostics/*.html`) 를 **읽기 전용**으로 내준다(이 PC 전용 127.0.0.1). 허브가 못 내주는 화면은 메뉴에서 그 항목에 `data-hub=""` 를 두면 허브에서 숨긴다.
+- 문의 데스크(5177)가 허브: `/board` `/archive` `/erd` `/bot-metrics` `/metrics` `/kpi` `/overview` `/protocol` (및 `/diagnostics/*.html`) 를 **읽기 전용**으로 내준다(이 PC 전용 127.0.0.1). 허브가 못 내주는 화면은 메뉴에서 그 항목에 `data-hub=""` 를 두면 허브에서 숨긴다.

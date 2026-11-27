@@ -29,9 +29,7 @@ DASH = os.path.dirname(HERE)
 SERVERS = (
     {"key": "intake", "name": "접수 서버", "port": 5179,
      "script": os.path.join("chat-ui", "chat-server.py"), "args": ["--noopen"]},       # --noopen: 켤 때마다 브라우저 탭이 뜨지 않게
-    {"key": "saver", "name": "대시보드 저장 서버", "port": 5178,
-     "script": "board-saver.py", "args": []},
-    {"key": "desk", "name": "통합 데스크 허브", "port": 5177,
+    {"key": "desk", "name": "통합 데스크·저장 서버", "port": 5177,
      "script": os.path.join("desk", "desk-server.py"), "args": []},
 )
 

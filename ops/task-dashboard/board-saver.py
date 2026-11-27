@@ -31,7 +31,8 @@ import io, json, os, re, shutil, sys, datetime, threading, secrets, hmac
 from urllib.parse import urlsplit, parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if __name__ == "__main__" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HOST, PORT = "127.0.0.1", 5178          # ⛔ HOST 는 절대 0.0.0.0 으로 바꾸지 말 것
 BASE       = os.path.dirname(os.path.abspath(__file__))
@@ -109,6 +110,8 @@ def _atomic_write(path, text):
 
 def save_board(text):
     """task-board.html 전체 덮어쓰기. 형식·크기 검증을 통과해야만 쓴다."""
+    if "data-readonly-board" in text or "보기 전용 — 수정·저장은 제어판에서 연 대시보드에서 하십시오" in text:
+        return False, "허브 보기 전용 사본은 원본 대시보드에 저장할 수 없습니다 — 저장 중단"
     if "const TASKS = [" not in text or 'id="editbar"' not in text:
         return False, "보드 형식이 아닙니다(TASKS 배열/편집바 없음) — 저장 중단"
     if "</html>" not in text[-2000:]:
